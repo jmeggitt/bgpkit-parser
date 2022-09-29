@@ -26,6 +26,8 @@ regex = "1"
 bgp-models = "0.8.0"
 # bgp-models = {git="https://github.com/bgpkit/bgp-models.git", branch="main"}
 
+byteorder = "1.4.3"
+
 # logging
 log="0.4"
 env_logger="0.9"

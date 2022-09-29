@@ -1,6 +1,8 @@
 use std::{convert, error::Error, fmt, io};
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
+use std::io::ErrorKind::InvalidData;
+use ipnetwork::IpNetworkError;
 use oneio::OneIoError;
 
 #[derive(Debug)]
@@ -79,5 +81,14 @@ impl convert::From<io::Error> for ParserError {
             ErrorKind::UnexpectedEof => { ParserError::EofError(io_error)}
             _ => ParserError::IoError(io_error)
         }
+    }
+}
+
+impl From<IpNetworkError> for ParserError {
+    fn from(err: IpNetworkError) -> Self {
+        // I'm not sure if IoError is the right choice yet, but it mirrors the original usage. This
+        // may need to be changed to a different type of error to differentiate reader IO and
+        // general parsing errors.
+        ParserError::IoError(io::Error::new(InvalidData, err))
     }
 }

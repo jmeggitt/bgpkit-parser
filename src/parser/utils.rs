@@ -7,10 +7,12 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
 };
 use std::convert::TryInto;
+use std::io::Read;
 
 use num_traits::FromPrimitive;
 use std::net::IpAddr;
 use bgp_models::network::{Afi, Asn, AsnLength, NetworkPrefix, Safi};
+use byteorder::{NetworkEndian, ReadBytesExt};
 use log::debug;
 
 use crate::error::ParserError;
@@ -326,7 +328,7 @@ impl  DataBytes <'_>{
     }
 }
 // Allow reading IPs from Reads
-pub trait ReadUtils: io::Read {
+pub trait ReadUtils: Read {
     #[inline]
     fn read_32b(&mut self) -> io::Result<u32> {
         let mut buf = [0; 4];
@@ -340,7 +342,189 @@ pub trait ReadUtils: io::Read {
         self.read_exact(&mut buf)?;
         Ok(u16::from_be_bytes(buf))
     }
+
+    /// Read announced/withdrawn prefix.
+    ///
+    /// The length in bits is 1 byte, and then based on the IP version it reads different number of bytes.
+    /// If the `add_path` is true, it will also first read a 4-byte path id first; otherwise, a path-id of 0
+    /// is automatically set.
+    fn read_nlri_prefix(&mut self, afi: &Afi, add_path: bool) -> Result<NetworkPrefix, ParserError>;
+
+    fn read_address(&mut self, afi: &Afi) -> Result<IpAddr, ParserError>;
+    fn read_ipv4_address(&mut self) -> Result<Ipv4Addr, ParserError>;
+    fn read_ipv6_address(&mut self) -> Result<Ipv6Addr, ParserError>;
+
+
+    fn read_ipv4_prefix(&mut self) -> Result<Ipv4Network, ParserError>;
+    fn read_ipv6_prefix(&mut self) -> Result<Ipv6Network, ParserError>;
+
+    fn read_asn(&mut self, as_length: &AsnLength) -> Result<Asn, ParserError>;
+
+    fn read_asns(&mut self, as_length: &AsnLength, count: usize) -> Result<Vec<Asn>, ParserError>;
+
+    fn read_afi(&mut self) -> Result<Afi, ParserError>;
+
+    fn read_safi(&mut self) -> Result<Safi, ParserError>;
+
+    fn parse_nlri_list(
+        &mut self,
+        add_path: bool,
+        afi: &Afi,
+        total_bytes: usize,
+    ) -> Result<Vec<NetworkPrefix>, ParserError>;
 }
 
 // All types that implement Read can now read prefixes
-impl<R: io::Read> ReadUtils for R {}
+impl<R: Read> ReadUtils for R {
+    #[inline]
+    fn read_nlri_prefix(&mut self, afi: &Afi, should_add_path: bool) -> Result<NetworkPrefix, ParserError> {
+        let mut path_id = 0;
+
+        if should_add_path {
+            path_id = self.read_u32::<NetworkEndian>()?;
+        }
+
+        // Length in bits and bytes
+        let bit_len = self.read_u8()?;
+        let byte_len: usize = (bit_len as usize + 7) / 8;
+
+        let network_prefix = match afi {
+            Afi::Ipv4 if bit_len <= 32 => {
+                let mut buff = [0; 4];
+                self.read_exact(&mut buff[..byte_len])?;
+                Ipv4Network::new(Ipv4Addr::from(buff), bit_len).map(IpNetwork::V4)
+            }
+            Afi::Ipv6 if bit_len <= 128 => {
+                let mut buff = [0; 16];
+                self.read_exact(&mut buff[..byte_len])?;
+                Ipv6Network::new(Ipv6Addr::from(buff), bit_len).map(IpNetwork::V6)
+            }
+            _ => return Err(ParserError::ParseError(format!("Invalid byte length for {:?} prefix. byte_len: {}, bit_len: {}", afi, byte_len, bit_len)))
+        };
+
+        match network_prefix {
+            Ok(prefix) => Ok(NetworkPrefix::new(prefix, path_id)),
+            Err(_) => unreachable!("Bit length was checked prior to construction")
+        }
+    }
+
+    #[inline]
+    fn read_address(&mut self, afi: &Afi) -> Result<IpAddr, ParserError> {
+        match afi {
+            Afi::Ipv4 => self.read_ipv4_address().map(IpAddr::V4),
+            Afi::Ipv6 => self.read_ipv6_address().map(IpAddr::V6),
+        }
+    }
+
+    #[inline]
+    fn read_ipv4_address(&mut self) -> Result<Ipv4Addr, ParserError> {
+        Ok(Ipv4Addr::from(self.read_u32::<NetworkEndian>()?))
+    }
+
+    #[inline]
+    fn read_ipv6_address(&mut self) -> Result<Ipv6Addr, ParserError> {
+        Ok(Ipv6Addr::from(self.read_u128::<NetworkEndian>()?))
+    }
+
+    #[inline]
+    fn read_ipv4_prefix(&mut self) -> Result<Ipv4Network, ParserError> {
+        let addr = self.read_ipv4_address()?;
+        let mask = self.read_u8()?;
+        Ok(Ipv4Network::new(addr, mask)?)
+    }
+
+    #[inline]
+    fn read_ipv6_prefix(&mut self) -> Result<Ipv6Network, ParserError> {
+        let addr = self.read_ipv6_address()?;
+        let mask = self.read_u8()?;
+        Ok(Ipv6Network::new(addr, mask)?)
+    }
+
+    #[inline]
+    fn read_asn(&mut self, as_length: &AsnLength) -> Result<Asn, ParserError> {
+        let asn = match as_length {
+            AsnLength::Bits16 => self.read_u16::<NetworkEndian>()? as u32,
+            AsnLength::Bits32 => self.read_u32::<NetworkEndian>()?,
+        };
+
+        Ok(Asn { asn, len: *as_length })
+    }
+
+    #[inline]
+    fn read_asns(&mut self, as_length: &AsnLength, count: usize) -> Result<Vec<Asn>, ParserError> {
+        let mut path = Vec::with_capacity(count);
+
+        for _ in 0..count {
+            path.push(self.read_asn(as_length)?);
+        }
+
+        Ok(path)
+    }
+
+    #[inline]
+    fn read_afi(&mut self) -> Result<Afi, ParserError> {
+        let afi = self.read_u16::<NetworkEndian>()?;
+        Afi::from_u16(afi).ok_or_else(|| ParserError::Unsupported(format!("Unknown AFI type: {}", afi)))
+    }
+
+    #[inline]
+    fn read_safi(&mut self) -> Result<Safi, ParserError> {
+        let safi = self.read_u8()?;
+        Safi::from_u8(safi).ok_or_else(|| ParserError::Unsupported(format!("Unknown SAFI type: {}", safi)))
+    }
+
+    #[inline]
+    fn parse_nlri_list(&mut self, add_path: bool, afi: &Afi, total_bytes: usize) -> Result<Vec<NetworkPrefix>, ParserError> {
+        if total_bytes == 0 {
+            return Ok(Vec::new())
+        }
+
+        let first_byte = [self.read_u8()?];
+        let mut reader = (&mut &first_byte).chain(self).take(total_bytes as u64);
+
+        // Fast path where first byte lines up with out expectations and we can read like normal
+        if add_path || first_byte[0] != 0 {
+            let mut prefixes = Vec::new();
+
+            while reader.limit() > 0 {
+                prefixes.push(reader.read_nlri_prefix(afi, add_path)?);
+            }
+
+            return Ok(prefixes)
+        }
+
+        // If we think there is an issue we need to buffer this section so it can be read twice
+        debug!("not add-path but with NLRI size to be 0, likely add-path msg in wrong msg type, treat as add-path now");
+        let mut buffer = Vec::with_capacity(total_bytes);
+        reader.read_to_end(&mut buffer)?;
+
+        let mut prefixes = Vec::new();
+        let mut reader = &buffer[..];
+
+        // Attempt a pass with add_path being true
+        let mut success = true;
+        while !reader.is_empty() {
+            match reader.read_nlri_prefix(afi, true) {
+                Ok(v) => prefixes.push(v),
+                Err(_) => {
+                    success = false;
+                    break
+                }
+            }
+        }
+
+        if success {
+            return Ok(prefixes)
+        }
+
+        // If toggling add_path fails, then reset and do the regular version
+        prefixes.clear();
+        let mut reader = &buffer[..];
+
+        while !reader.is_empty() {
+            prefixes.push(reader.read_nlri_prefix(afi, add_path)?);
+        }
+
+        return Ok(prefixes)
+    }
+}

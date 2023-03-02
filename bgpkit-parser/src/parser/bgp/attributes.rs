@@ -165,7 +165,6 @@ impl AttributeParser {
                     attributes.push(Attribute {
                         value,
                         flag,
-                        attr_type,
                     });
                 }
                 Err(e) => {

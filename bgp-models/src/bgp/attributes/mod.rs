@@ -5,6 +5,7 @@ use crate::network::*;
 use serde::{Serialize, Serializer};
 use std::fmt::{Display, Formatter};
 use std::net::IpAddr;
+use std::ops::Deref;
 
 mod as_path;
 
@@ -107,9 +108,40 @@ pub enum AtomicAggregate {
 /// BGP Attribute struct with attribute value and flag
 #[derive(Debug, PartialEq, Clone, Serialize, Eq)]
 pub struct Attribute {
-    pub attr_type: AttrType,
     pub value: AttributeValue,
     pub flag: u8,
+}
+
+impl AttributeValue {
+    pub fn attr_type(&self) -> AttrType {
+        match self {
+            AttributeValue::Origin(_) => AttrType::ORIGIN,
+            AttributeValue::AsPath(_) => AttrType::AS_PATH,
+            AttributeValue::As4Path(_) => AttrType::AS4_PATH,
+            AttributeValue::NextHop(_) => AttrType::NEXT_HOP,
+            AttributeValue::MultiExitDiscriminator(_) => AttrType::MULTI_EXIT_DISCRIMINATOR,
+            AttributeValue::LocalPreference(_) => AttrType::LOCAL_PREFERENCE,
+            AttributeValue::OnlyToCustomer(_) => AttrType::ONLY_TO_CUSTOMER,
+            AttributeValue::AtomicAggregate(_) => AttrType::ATOMIC_AGGREGATE,
+            AttributeValue::Aggregator(_, _) => AttrType::AGGREGATOR,
+            AttributeValue::Communities(_) => AttrType::COMMUNITIES,
+            AttributeValue::ExtendedCommunities(_) => AttrType::EXTENDED_COMMUNITIES,
+            AttributeValue::LargeCommunities(_) => AttrType::LARGE_COMMUNITIES,
+            AttributeValue::OriginatorId(_) => AttrType::ORIGINATOR_ID,
+            AttributeValue::Clusters(_) => AttrType::CLUSTER_LIST,
+            AttributeValue::MpReachNlri(_) => AttrType::MP_REACHABLE_NLRI,
+            AttributeValue::MpUnreachNlri(_) => AttrType::MP_UNREACHABLE_NLRI,
+            AttributeValue::Development(_) => AttrType::DEVELOPMENT,
+        }
+    }
+}
+
+impl Deref for Attribute {
+    type Target = AttributeValue;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
 }
 
 /// The `AttributeValue` enum represents different kinds of Attribute values.

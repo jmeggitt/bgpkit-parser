@@ -99,7 +99,7 @@ impl Default for BgpElem {
             timestamp: 0.0,
             elem_type: ElemType::ANNOUNCE,
             peer_ip: IpAddr::from_str("0.0.0.0").unwrap(),
-            peer_asn: 0.into(),
+            peer_asn: Asn::new_16bit(0),
             prefix: NetworkPrefix::from_str("0.0.0.0/0").unwrap(),
             next_hop: None,
             as_path: None,

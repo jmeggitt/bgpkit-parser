@@ -96,7 +96,7 @@ pub fn parse_ris_live_message(msg_str: &str) -> Result<Vec<BgpElem>, ParserRisli
 
                     let peer_ip = unwrap_or_return!(ris_msg.peer.parse::<IpAddr>(), msg_string);
                     let peer_asn: Asn =
-                        unwrap_or_return!(ris_msg.peer_asn.parse::<i32>(), msg_string).into();
+                        unwrap_or_return!(ris_msg.peer_asn.parse::<u32>(), msg_string).into();
 
                     // parse path
                     let as_path = path.map(path_to_as_path);
@@ -108,7 +108,7 @@ pub fn parse_ris_live_message(msg_str: &str) -> Result<Vec<BgpElem>, ParserRisli
                             let mut comms: Vec<MetaCommunity> = vec![];
                             for c in cs {
                                 comms.push(MetaCommunity::Community(Community::Custom(
-                                    (c.0 as i32).into(),
+                                    c.0.into(),
                                     c.1,
                                 )));
                             }

@@ -259,9 +259,7 @@ impl AsPath {
         let mut path = vec![];
         for s in &self.segments {
             if let AsPathSegment::AsSequence(seg) = s {
-                for asn in seg {
-                    path.push(asn.asn);
-                }
+                path.extend(seg.iter().copied().map(u32::from));
             } else {
                 // this won't happen
                 return None;

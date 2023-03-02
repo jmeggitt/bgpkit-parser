@@ -2,7 +2,7 @@ use crate::parser::bgp::parse_bgp_message;
 use crate::parser::rislive::error::ParserRisliveError;
 use crate::{BgpElem, Elementor};
 use bgp_models::mrt::{Bgp4MpType, CommonHeader, EntryType, MrtMessage, MrtRecord};
-use bgp_models::network::{Afi, AsnLength};
+use bgp_models::network::{Afi, Asn, AsnLength};
 use serde_json::Value;
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -37,7 +37,7 @@ pub fn parse_raw_bytes(msg_str: &str) -> Result<Vec<BgpElem>, ParserRisliveError
 
     let peer_asn_str = data.get("peer_asn").unwrap().as_str().unwrap().to_owned();
 
-    let peer_asn = peer_asn_str.parse::<i32>().unwrap().into();
+    let peer_asn = peer_asn_str.parse::<u32>().unwrap().into();
 
     let bgp_msg = match parse_bgp_message(bytes.as_slice(), false, &AsnLength::Bits32) {
         Ok(m) => m,
@@ -64,7 +64,7 @@ pub fn parse_raw_bytes(msg_str: &str) -> Result<Vec<BgpElem>, ParserRisliveError
             bgp_models::mrt::bgp4mp::Bgp4MpMessage {
                 msg_type: Bgp4MpType::Bgp4MpMessageAs4,
                 peer_asn,
-                local_asn: 0.into(),
+                local_asn: Asn::new_16bit(0),
                 interface_index: 0,
                 afi,
                 peer_ip,

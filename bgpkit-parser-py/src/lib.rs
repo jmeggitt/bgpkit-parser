@@ -15,13 +15,13 @@ fn pybgpkit_parser(_py: Python, m: &PyModule) -> PyResult<()> {
                 ElemType::WITHDRAW => "W".to_string(),
             },
             peer_ip: elem.peer_ip.to_string(),
-            peer_asn: elem.peer_asn.asn,
+            peer_asn: elem.peer_asn.into(),
             prefix: elem.prefix.to_string(),
             next_hop: elem.next_hop.map(|v| v.to_string()),
             as_path: elem.as_path.map(|v| v.to_string()),
             origin_asns: elem
                 .origin_asns
-                .map(|v| v.into_iter().map(|x| x.asn).collect()),
+                .map(|v| v.into_iter().map(u32::from).collect()),
             origin: elem.origin.map(|v| v.to_string()),
             local_pref: elem.local_pref,
             med: elem.med,
@@ -35,7 +35,7 @@ fn pybgpkit_parser(_py: Python, m: &PyModule) -> PyResult<()> {
                     AtomicAggregate::AG => Some("AG".to_string()),
                 },
             },
-            aggr_asn: elem.aggr_asn.map(|v| v.asn),
+            aggr_asn: elem.aggr_asn.map(u32::from),
             aggr_ip: elem.aggr_ip.map(|v| v.to_string()),
         }
     }

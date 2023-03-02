@@ -124,10 +124,7 @@ pub fn parse_bgp_notification_message(
 /// The parsing of BGP OPEN messages also includes decoding the BGP capabilities.
 pub fn parse_bgp_open_message(input: &mut Cursor<&[u8]>) -> Result<BgpOpenMessage, ParserError> {
     let version = input.read_8b()?;
-    let asn = Asn {
-        asn: input.read_u16::<BE>()? as u32,
-        len: AsnLength::Bits16,
-    };
+    let asn = Asn::new_16bit(input.read_u16::<BE>()?);
     let hold_time = input.read_u16::<BE>()?;
     let sender_ip = input.read_ipv4_address()?;
     let opt_params_len = input.read_8b()?;

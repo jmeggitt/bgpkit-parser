@@ -23,6 +23,7 @@ num-traits = "0.2"
 log = "0.4"
 ipnet = "2.7"
 itertools = "0.10.1"
+smallvec = {version="1.10.0", features=["union"]}
 serde={version="1", features=["derive"]}
 
 [dev-dependencies]

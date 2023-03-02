@@ -11,11 +11,10 @@ pub mod rislive;
 
 pub(crate) use self::utils::*;
 pub(crate) use bgp::attributes::AttributeParser;
-pub(crate) use mrt::{
-    parse_bgp4mp, parse_mrt_record, parse_table_dump_message, parse_table_dump_v2_message,
-};
+pub(crate) use mrt::{parse_bgp4mp, parse_table_dump_message, parse_table_dump_v2_message};
 
 pub use crate::error::{ParserError, ParserErrorWithBytes};
+use crate::parser::mrt::mrt_record::{parse_common_header, parse_raw_bytes};
 use crate::Filter;
 use bgp_models::prelude::MrtRecord;
 pub use mrt::mrt_elem::Elementor;
@@ -23,6 +22,7 @@ use oneio::get_reader;
 
 pub struct BgpkitParser<R> {
     reader: R,
+    buffer: Vec<u8>,
     core_dump: bool,
     filters: Vec<Filter>,
     options: ParserOptions,
@@ -31,6 +31,7 @@ pub struct BgpkitParser<R> {
 pub(crate) struct ParserOptions {
     show_warnings: bool,
 }
+
 impl Default for ParserOptions {
     fn default() -> Self {
         ParserOptions {
@@ -45,6 +46,7 @@ impl BgpkitParser<Box<dyn Read + Send>> {
         let reader = get_reader(path)?;
         Ok(BgpkitParser {
             reader,
+            buffer: Vec::new(),
             core_dump: false,
             filters: vec![],
             options: ParserOptions::default(),
@@ -57,6 +59,7 @@ impl<R: Read> BgpkitParser<R> {
     pub fn from_reader(reader: R) -> Self {
         BgpkitParser {
             reader,
+            buffer: Vec::new(),
             core_dump: false,
             filters: vec![],
             options: ParserOptions::default(),
@@ -65,7 +68,45 @@ impl<R: Read> BgpkitParser<R> {
 
     /// This is used in for loop `for item in parser{}`
     pub fn next_record(&mut self) -> Result<MrtRecord, ParserErrorWithBytes> {
-        parse_mrt_record(&mut self.reader)
+        self.buffer.clear();
+
+        // parse common header
+        let common_header =
+            parse_common_header(&mut self.reader).map_err(|err| ParserErrorWithBytes {
+                error: err,
+                bytes: None,
+            })?;
+
+        // read the whole message bytes to buffer
+        self.buffer.reserve(common_header.length as usize);
+        if let Err(e) = (&mut self.reader)
+            .take(common_header.length as u64)
+            .read_to_end(&mut self.buffer)
+        {
+            return Err(ParserErrorWithBytes {
+                error: ParserError::IoError(e),
+                bytes: None,
+            });
+        }
+
+        match parse_raw_bytes(&common_header, &self.buffer[..]) {
+            Ok(message) => Ok(MrtRecord {
+                common_header,
+                message,
+            }),
+            Err(e) => {
+                let mut total_bytes = vec![];
+                if common_header.write_header(&mut total_bytes).is_err() {
+                    unreachable!("Vec<u8> will never produce errors when used as a std::io::Write")
+                }
+
+                total_bytes.extend_from_slice(&self.buffer);
+                Err(ParserErrorWithBytes {
+                    error: e,
+                    bytes: Some(total_bytes),
+                })
+            }
+        }
     }
 }
 
@@ -73,6 +114,7 @@ impl<R> BgpkitParser<R> {
     pub fn enable_core_dump(self) -> Self {
         BgpkitParser {
             reader: self.reader,
+            buffer: self.buffer,
             core_dump: true,
             filters: self.filters,
             options: self.options,
@@ -84,6 +126,7 @@ impl<R> BgpkitParser<R> {
         options.show_warnings = false;
         BgpkitParser {
             reader: self.reader,
+            buffer: self.buffer,
             core_dump: self.core_dump,
             filters: self.filters,
             options,
@@ -99,6 +142,7 @@ impl<R> BgpkitParser<R> {
         filters.push(Filter::new(filter_type, filter_value)?);
         Ok(BgpkitParser {
             reader: self.reader,
+            buffer: self.buffer,
             core_dump: self.core_dump,
             filters,
             options: self.options,

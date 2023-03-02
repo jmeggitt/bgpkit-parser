@@ -127,7 +127,10 @@ pub fn parse_mrt_record(input: &mut impl Read) -> Result<MrtRecord, ParserErrorW
     }
 }
 
-fn parse_raw_bytes(common_header: &CommonHeader, data: &[u8]) -> Result<MrtMessage, ParserError> {
+pub(crate) fn parse_raw_bytes(
+    common_header: &CommonHeader,
+    data: &[u8],
+) -> Result<MrtMessage, ParserError> {
     let message: MrtMessage = match &common_header.entry_type {
         EntryType::TABLE_DUMP => {
             let msg = parse_table_dump_message(common_header.entry_subtype, data);

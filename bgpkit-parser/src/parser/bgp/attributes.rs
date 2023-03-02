@@ -162,10 +162,7 @@ impl AttributeParser {
 
             match attr {
                 Ok(value) => {
-                    attributes.push(Attribute {
-                        value,
-                        flag,
-                    });
+                    attributes.push(Attribute { value, flag });
                 }
                 Err(e) => {
                     if partial {

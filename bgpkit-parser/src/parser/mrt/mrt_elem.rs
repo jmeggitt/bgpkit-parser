@@ -179,7 +179,7 @@ impl Elementor {
             prefix: p,
             next_hop,
             as_path: path.clone(),
-            origin_asns: origin_asns.clone(),
+            origin_asns: origin_asns.map(|x| x.to_vec()),
             origin,
             local_pref,
             med,
@@ -199,7 +199,7 @@ impl Elementor {
                 next_hop,
                 as_path: path.clone(),
                 origin,
-                origin_asns: origin_asns.clone(),
+                origin_asns: origin_asns.map(|x| x.to_vec()),
                 local_pref,
                 med,
                 communities: communities.clone(),
@@ -275,10 +275,10 @@ impl Elementor {
                     _withdrawn,
                 ) = get_relevant_attributes(msg.attributes);
 
-                let origin_asns = match &as_path {
-                    None => None,
-                    Some(p) => p.get_origin(),
-                };
+                let origin_asns = as_path
+                    .as_ref()
+                    .and_then(|x| x.get_origin())
+                    .map(|x| x.to_vec());
 
                 elems.push(BgpElem {
                     timestamp,
@@ -359,10 +359,10 @@ impl Elementor {
                                 Some(v) => Some(v),
                             };
 
-                            let origin_asns = match &path {
-                                None => None,
-                                Some(p) => p.get_origin(),
-                            };
+                            let origin_asns = path
+                                .as_ref()
+                                .and_then(|x| x.get_origin())
+                                .map(|x| x.to_vec());
 
                             elems.push(BgpElem {
                                 timestamp,

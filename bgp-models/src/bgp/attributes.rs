@@ -277,12 +277,24 @@ pub enum AsPathSegmentBuilder<'a> {
     Heap(&'a mut Vec<Asn>),
 }
 
+impl<'a> AsPathSegmentBuilder<'a> {
+    #[inline(always)]
+    pub fn push(&mut self, asn: Asn) {
+        match self {
+            AsPathSegmentBuilder::InPlace(arr) => arr.push(asn),
+            AsPathSegmentBuilder::Heap(arr) => arr.push(asn),
+        }
+    }
+}
+
 pub struct AsPathBuilder {
     storage: AsPathStorage,
     first_sequence: bool,
 }
 
 impl AsPathBuilder {
+    /// Begin a new AS sequence within this path being built. The given length is used similarly to
+    /// [Vec::with_capacity] to perform pre-allocation of the underlying storage.
     #[inline(always)]
     pub fn begin_as_sequence<'a>(&'a mut self, length: usize) -> AsPathSegmentBuilder<'a> {
         let storage = &mut self.storage;
@@ -297,8 +309,10 @@ impl AsPathBuilder {
         Self::begin_sequence_cold_path(storage, length)
     }
 
+    /// Begin a new AS set within this path being built. The given length is used similarly to
+    /// [Vec::with_capacity] to perform pre-allocation of the underlying storage.
     #[cold]
-    fn begin_as_set(&mut self, length: usize) -> AsPathSegmentBuilder {
+    pub fn begin_as_set(&mut self, length: usize) -> AsPathSegmentBuilder {
         let segments = self.storage.switch_to_mixed_storage(!self.first_sequence);
         segments.push(AsPathSegment::AsSet(Cow::Owned(Vec::with_capacity(length))));
 
@@ -309,8 +323,10 @@ impl AsPathBuilder {
         }
     }
 
+    /// Begin a new confed sequence within this path being built. The given length is used similarly to
+    /// [Vec::with_capacity] to perform pre-allocation of the underlying storage.
     #[cold]
-    fn begin_confed_sequence(&mut self, length: usize) -> AsPathSegmentBuilder {
+    pub fn begin_confed_sequence(&mut self, length: usize) -> AsPathSegmentBuilder {
         let segments = self.storage.switch_to_mixed_storage(!self.first_sequence);
         segments.push(AsPathSegment::ConfedSequence(Cow::Owned(
             Vec::with_capacity(length),
@@ -323,8 +339,10 @@ impl AsPathBuilder {
         }
     }
 
+    /// Begin a new confed set within this path being built. The given length is used similarly to
+    /// [Vec::with_capacity] to perform pre-allocation of the underlying storage.
     #[cold]
-    fn begin_confed_set(&mut self, length: usize) -> AsPathSegmentBuilder {
+    pub fn begin_confed_set(&mut self, length: usize) -> AsPathSegmentBuilder {
         let segments = self.storage.switch_to_mixed_storage(!self.first_sequence);
         segments.push(AsPathSegment::ConfedSet(Cow::Owned(Vec::with_capacity(
             length,

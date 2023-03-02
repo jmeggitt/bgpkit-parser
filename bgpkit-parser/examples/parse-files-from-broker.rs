@@ -1,3 +1,4 @@
+use bgp_models::prelude::Asn;
 use bgpkit_broker::{BgpkitBroker, QueryParams};
 use bgpkit_parser::{BgpElem, BgpkitParser};
 
@@ -26,7 +27,7 @@ fn main() {
             .into_elem_iter()
             .map(|elem| {
                 if let Some(origins) = &elem.origin_asns {
-                    if origins.contains(&13335.into()) {
+                    if origins.contains(&Asn::new_16bit(13335)) {
                         Some(elem)
                     } else {
                         None

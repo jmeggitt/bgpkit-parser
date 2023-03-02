@@ -1,5 +1,5 @@
 use bgp_models::bgp::attributes::AsPath;
-use bgp_models::bgp::attributes::AsPathSegment::{AsSequence, AsSet};
+use bgp_models::bgp::AsPathBuilder;
 use bgp_models::network::Asn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -66,21 +66,28 @@ pub enum PathSeg {
 }
 
 pub fn path_to_as_path(path: Vec<PathSeg>) -> AsPath {
-    let mut as_path = AsPath::new();
-    let mut sequence = vec![];
-    let mut set: Option<Vec<Asn>> = None;
-    for node in path {
-        match node {
-            PathSeg::Asn(asn) => sequence.push(asn.into()),
-            PathSeg::AsSet(s) => set = Some(s.into_iter().map(|i| i.into()).collect::<Vec<Asn>>()),
+    let mut builder = AsPathBuilder::default();
+    let mut segment = None;
+
+    for item in path {
+        match (&mut segment, item) {
+            (None, PathSeg::Asn(asn)) => {
+                let mut new_segment = builder.begin_as_sequence(0);
+                new_segment.push(Asn::from(asn));
+                segment = Some(new_segment);
+            }
+            (Some(segment), PathSeg::Asn(asn)) => {
+                segment.push(Asn::from(asn));
+            }
+            (_, PathSeg::AsSet(set)) => {
+                segment = None;
+                let mut new_segment = builder.begin_as_sequence(set.len());
+                set.into_iter()
+                    .for_each(|asn| new_segment.push(Asn::from(asn)));
+            }
         }
     }
-    as_path.segments.push(AsSequence(sequence));
-    if let Some(s) = set {
-        as_path.segments.push(AsSet(s))
-    }
-
-    as_path
+    builder.build()
 }
 
 #[cfg(test)]

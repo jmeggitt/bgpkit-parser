@@ -219,6 +219,6 @@ impl Display for NetworkPrefix {
 
 impl Display for Asn {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "AS{}", self.asn)
+        write!(f, "{}", self.asn)
     }
 }

@@ -199,35 +199,43 @@ impl AttributeParser {
         asn_len: &AsnLength,
         total_bytes: usize,
     ) -> Result<AttributeValue, ParserError> {
-        let mut output = AsPath {
-            segments: Vec::with_capacity(5),
-        };
+        let mut builder = AsPathBuilder::default();
         let pos_end = input.position() + total_bytes as u64;
         while input.position() < pos_end {
-            let segment = self.parse_as_segment(input, asn_len)?;
-            output.add_segment(segment);
+            self.parse_as_segment(input, asn_len, &mut builder)?;
         }
-        Ok(AttributeValue::AsPath(output))
+        Ok(AttributeValue::AsPath(builder.build()))
     }
 
     fn parse_as_segment(
         &self,
         input: &mut Cursor<&[u8]>,
         asn_len: &AsnLength,
-    ) -> Result<AsPathSegment, ParserError> {
+        builder: &mut AsPathBuilder,
+    ) -> Result<(), ParserError> {
         let segment_type = input.read_8b()?;
         let count = input.read_8b()?;
-        let path = input.read_asns(asn_len, count as usize)?;
-        match segment_type {
-            AttributeParser::AS_PATH_AS_SET => Ok(AsPathSegment::AsSet(path)),
-            AttributeParser::AS_PATH_AS_SEQUENCE => Ok(AsPathSegment::AsSequence(path)),
-            AttributeParser::AS_PATH_CONFED_SEQUENCE => Ok(AsPathSegment::ConfedSequence(path)),
-            AttributeParser::AS_PATH_CONFED_SET => Ok(AsPathSegment::ConfedSet(path)),
-            _ => Err(ParserError::ParseError(format!(
-                "Invalid AS path segment type: {}",
-                segment_type
-            ))),
+
+        let mut segment_builder = match segment_type {
+            AttributeParser::AS_PATH_AS_SET => builder.begin_as_set(count as usize),
+            AttributeParser::AS_PATH_AS_SEQUENCE => builder.begin_as_sequence(count as usize),
+            AttributeParser::AS_PATH_CONFED_SEQUENCE => {
+                builder.begin_confed_sequence(count as usize)
+            }
+            AttributeParser::AS_PATH_CONFED_SET => builder.begin_confed_set(count as usize),
+            _ => {
+                return Err(ParserError::ParseError(format!(
+                    "Invalid AS path segment type: {}",
+                    segment_type
+                )))
+            }
+        };
+
+        for _ in 0..count {
+            segment_builder.push(input.read_asn(asn_len)?);
         }
+
+        Ok(())
     }
 
     fn parse_next_hop(

@@ -1,3 +1,4 @@
+use bgp_models::network::Afi;
 use oneio::OneIoError;
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
@@ -16,6 +17,7 @@ pub enum ParserError {
     TruncatedMsg(String),
     Unsupported(String),
     FilterError(String),
+    InvalidPrefixLength { afi: Afi, bit_length: u8 },
 }
 
 impl Error for ParserError {}
@@ -36,22 +38,29 @@ impl Error for ParserErrorWithBytes {}
 
 /// implement Display trait for Error which satistifies the std::error::Error
 /// trait's requirement (must implement Display and Debug traits, Debug already derived)
-impl fmt::Display for ParserError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let message = match self {
-            ParserError::IoError(e) => e.to_string(),
-            ParserError::EofError(e) => e.to_string(),
-            ParserError::ParseError(s) => s.to_owned(),
-            ParserError::TruncatedMsg(s) => s.to_owned(),
-            ParserError::DeprecatedAttr(s) => s.to_owned(),
-            ParserError::UnknownAttr(s) => s.to_owned(),
-            ParserError::Unsupported(s) => s.to_owned(),
-            ParserError::EofExpected => "reach end of file".to_string(),
-            ParserError::OneIoError(e) => e.to_string(),
-            ParserError::FilterError(e) => e.to_owned(),
-            ParserError::IoNotEnoughBytes() => "Not enough bytes to read".to_string(),
-        };
-        write!(f, "Error: {}", message)
+impl Display for ParserError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            ParserError::IoError(e) => write!(f, "{}", e),
+            ParserError::EofError(e) => write!(f, "{}", e),
+            ParserError::ParseError(s) => write!(f, "{}", s),
+            ParserError::TruncatedMsg(s) => write!(f, "{}", s),
+            ParserError::DeprecatedAttr(s) => write!(f, "{}", s),
+            ParserError::UnknownAttr(s) => write!(f, "{}", s),
+            ParserError::Unsupported(s) => write!(f, "{}", s),
+            ParserError::EofExpected => write!(f, "reached end of file"),
+            ParserError::OneIoError(e) => write!(f, "{}", e),
+            ParserError::FilterError(e) => write!(f, "{}", e),
+            ParserError::IoNotEnoughBytes() => write!(f, "Not enough bytes to read"),
+            ParserError::InvalidPrefixLength { afi, bit_length } => {
+                let byte_length = (bit_length + 7) / 8;
+                write!(
+                    f,
+                    "Invalid byte length for {:?} prefix. byte_len: {}, bit_len: {}",
+                    afi, byte_length, bit_length
+                )
+            }
+        }
     }
 }
 

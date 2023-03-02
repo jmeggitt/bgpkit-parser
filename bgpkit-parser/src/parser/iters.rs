@@ -1,6 +1,6 @@
 /*!
 Provides parser iterator implementation.
-*/
+ */
 use crate::error::ParserError;
 use crate::parser::BgpkitParser;
 use crate::Filterable;
@@ -91,8 +91,8 @@ impl<R: Read> Iterator for RecordIterator<R> {
                             }
                             continue;
                         }
-                        ParserError::ParseError(err_str) => {
-                            error!("parser error: {}", err_str);
+                        ParserError::ParseError(_) | ParserError::InvalidPrefixLength { .. } => {
+                            error!("parser error: {}", e.error);
                             if self.parser.core_dump {
                                 if let Some(bytes) = e.bytes {
                                     std::fs::write("mrt_core_dump", bytes)

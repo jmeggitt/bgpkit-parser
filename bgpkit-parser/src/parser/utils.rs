@@ -1,8 +1,8 @@
 /*!
 Provides IO utility functions for read bytes of different length and converting to corresponding structs.
-*/
+ */
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
-use std::io::{Cursor, Seek, SeekFrom};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr},
@@ -168,48 +168,44 @@ pub trait ReadUtils: io::Read {
     ) -> Result<NetworkPrefix, ParserError> {
         let path_id = if add_path { self.read_32b()? } else { 0 };
 
-        // Length in bits
+        // Length in bits and bytes
         let bit_len = self.read_8b()?;
-
-        // Convert to bytes
         let byte_len: usize = (bit_len as usize + 7) / 8;
-        let addr: IpAddr = match afi {
+
+        let prefix = match afi {
             Afi::Ipv4 => {
-                // 4 bytes -- u32
-                if byte_len > 4 {
-                    return Err(ParserError::ParseError(format!(
-                        "Invalid byte length for IPv4 prefix. byte_len: {}, bit_len: {}",
-                        byte_len, bit_len
-                    )));
+                // 4 bytes
+                if bit_len > 32 {
+                    return Err(ParserError::InvalidPrefixLength {
+                        afi: Afi::Ipv4,
+                        bit_length: bit_len,
+                    });
                 }
+
                 let mut buff = [0; 4];
-                for i in 0..byte_len {
-                    buff[i] = self.read_8b()?
+                self.read_exact(&mut buff[..byte_len])?;
+
+                match Ipv4Net::new(Ipv4Addr::from(buff), bit_len) {
+                    Ok(v) => IpNet::V4(v),
+                    Err(_) => unreachable!("Bit length has already been checked"),
                 }
-                IpAddr::V4(Ipv4Addr::from(buff))
             }
             Afi::Ipv6 => {
                 // 16 bytes
-                if byte_len > 16 {
-                    return Err(ParserError::ParseError(format!(
-                        "Invalid byte length for IPv6 prefix. byte_len: {}, bit_len: {}",
-                        byte_len, bit_len
-                    )));
+                if bit_len > 128 {
+                    return Err(ParserError::InvalidPrefixLength {
+                        afi: Afi::Ipv6,
+                        bit_length: bit_len,
+                    });
                 }
+
                 let mut buff = [0; 16];
-                for i in 0..byte_len {
-                    buff[i] = self.read_8b()?
+                self.read_exact(&mut buff[..byte_len])?;
+
+                match Ipv6Net::new(Ipv6Addr::from(buff), bit_len) {
+                    Ok(v) => IpNet::V6(v),
+                    Err(_) => unreachable!("Bit length has already been checked"),
                 }
-                IpAddr::V6(Ipv6Addr::from(buff))
-            }
-        };
-        let prefix = match IpNet::new(addr, bit_len) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err(ParserError::ParseError(format!(
-                    "Invalid network prefix length: {}",
-                    bit_len
-                )))
             }
         };
 
@@ -217,23 +213,18 @@ pub trait ReadUtils: io::Read {
     }
 
     fn read_n_bytes(&mut self, n_bytes: usize) -> Result<Vec<u8>, ParserError> {
-        // TODO: fix the checking
-        // if self.total - self.pos < n_bytes {
-        //     return Err(ParserError::IoNotEnoughBytes())
-        // }
-        let mut bytes = vec![];
-        for _ in 0..n_bytes {
-            bytes.push(self.read_8b()?);
-        }
-        Ok(bytes)
+        let mut buffer = vec![0; n_bytes];
+        self.read_exact(&mut buffer[..])?;
+        Ok(buffer)
     }
 
     fn read_n_bytes_to_string(&mut self, n_bytes: usize) -> Result<String, ParserError> {
         let buffer = self.read_n_bytes(n_bytes)?;
-        Ok(buffer
-            .into_iter()
-            .map(|x: u8| x as char)
-            .collect::<String>())
+
+        String::from_utf8(buffer).map_err(|e| {
+            let msg = format!("Attempted to read non-utf8 bytes to string: {}", e);
+            ParserError::ParseError(msg)
+        })
     }
 }
 

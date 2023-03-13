@@ -1,5 +1,5 @@
-use bgp_models::prelude::Asn;
-use bgpkit_broker::{BgpkitBroker, QueryParams};
+use bgp_models::network::Asn;
+use bgpkit_broker::BgpkitBroker;
 use bgpkit_parser::{BgpElem, BgpkitParser};
 
 /// This example shows how use BGPKIT Broker to retrieve a number of data file pointers that matches
@@ -7,15 +7,10 @@ use bgpkit_parser::{BgpElem, BgpkitParser};
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let broker = BgpkitBroker::new_with_params(
-        "https://api.broker.bgpkit.com/v1",
-        QueryParams {
-            start_ts: Some(1634693400),
-            end_ts: Some(1634693400),
-            page: 1,
-            ..Default::default()
-        },
-    );
+    let broker = BgpkitBroker::new()
+        .ts_start("1634693400")
+        .ts_end("1634693400")
+        .page(1);
 
     for item in broker.into_iter().take(2) {
         log::info!("downloading updates file: {}", &item.url);
@@ -25,7 +20,7 @@ fn main() {
         // iterating through the parser. the iterator returns `BgpElem` one at a time.
         let elems = parser
             .into_elem_iter()
-            .map(|elem| {
+            .filter_map(|elem| {
                 if let Some(origins) = &elem.origin_asns {
                     if origins.contains(&Asn::new_16bit(13335)) {
                         Some(elem)
@@ -36,7 +31,6 @@ fn main() {
                     None
                 }
             })
-            .filter_map(|x| x)
             .collect::<Vec<BgpElem>>();
         log::info!("{} elems matches", elems.len());
     }

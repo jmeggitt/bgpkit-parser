@@ -1,2 +1,11 @@
 [workspace]
 members = ["bgp-models", "bgpkit-parser", "bgpkit-parser-py"]
+
+# Take advantage of performance improvements from fat LTO on binary and cdylib targets
+[profile.release]
+lto = "fat"
+
+# Override previous setting with the default for release mode when compiling benchmarks. Since profile settings on
+# dependencies are ignored, this will more accuratly represent the performance seen by those using these crates
+[profile.bench]
+lto = "thin"

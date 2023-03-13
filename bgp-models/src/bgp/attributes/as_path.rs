@@ -57,10 +57,10 @@ impl AsPathSegment<'static> {
 impl<'s> AsPathSegment<'s> {
     pub fn borrowed(&self) -> AsPathSegment {
         match self {
-            AsPathSegment::AsSequence(x) => AsPathSegment::AsSequence(Cow::Borrowed(&*x)),
-            AsPathSegment::AsSet(x) => AsPathSegment::AsSet(Cow::Borrowed(&*x)),
-            AsPathSegment::ConfedSequence(x) => AsPathSegment::ConfedSequence(Cow::Borrowed(&*x)),
-            AsPathSegment::ConfedSet(x) => AsPathSegment::ConfedSet(Cow::Borrowed(&*x)),
+            AsPathSegment::AsSequence(x) => AsPathSegment::AsSequence(Cow::Borrowed(&**x)),
+            AsPathSegment::AsSet(x) => AsPathSegment::AsSet(Cow::Borrowed(&**x)),
+            AsPathSegment::ConfedSequence(x) => AsPathSegment::ConfedSequence(Cow::Borrowed(&**x)),
+            AsPathSegment::ConfedSet(x) => AsPathSegment::ConfedSet(Cow::Borrowed(&**x)),
         }
     }
 
@@ -166,7 +166,7 @@ impl AsPathBuilder {
     /// Begin a new AS sequence within this path being built. The given length is used similarly to
     /// [Vec::with_capacity] to perform pre-allocation of the underlying storage.
     #[inline(always)]
-    pub fn begin_as_sequence<'a>(&'a mut self, length: usize) -> AsPathSegmentBuilder<'a> {
+    pub fn begin_as_sequence(&mut self, length: usize) -> AsPathSegmentBuilder {
         let storage = &mut self.storage;
         if self.first_sequence {
             if let AsPathStorage::SingleSequence(seq) = storage {

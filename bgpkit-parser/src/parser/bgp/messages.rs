@@ -5,7 +5,7 @@ use num_traits::FromPrimitive;
 use std::io::{Cursor, Seek, SeekFrom};
 
 use crate::error::ParserError;
-use crate::parser::{parse_nlri_list, AttributeParser, ReadUtils};
+use crate::parser::{next_slice_in_cursor, parse_nlri_list, AttributeParser, ReadUtils};
 use log::warn;
 
 /// BGP message
@@ -216,7 +216,8 @@ fn read_nlri(
         return Ok(vec![]);
     }
 
-    parse_nlri_list(input, add_path, afi, length as u64)
+    let input_bytes = next_slice_in_cursor(input, length as u64);
+    parse_nlri_list(input_bytes, add_path, *afi)
 }
 
 /// read bgp update message.

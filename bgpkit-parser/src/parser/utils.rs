@@ -2,7 +2,7 @@
 Provides IO utility functions for read bytes of different length and converting to corresponding structs.
  */
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
-use std::io::{Cursor, Seek, SeekFrom};
+use std::io::Cursor;
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr},
@@ -10,7 +10,6 @@ use std::{
 
 use bgp_models::network::{Afi, Asn, AsnLength, NetworkPrefix, Safi};
 use byteorder::{ReadBytesExt, BE};
-use log::debug;
 use num_traits::FromPrimitive;
 use std::net::IpAddr;
 
@@ -133,6 +132,62 @@ pub trait ReadUtils: io::Read {
         }
     }
 
+    /// An alternative to [ReadUtils::read_nlri_prefix] which is easier for the compiler to
+    /// optimize. Calling `x.read_v4_nlri_prefix()` is functionally equivalent to
+    /// `x.read_nlri_prefix(&Afi::Ipv4, false)`.
+    #[inline(always)]
+    fn read_v4_nlri_prefix(&mut self) -> Result<NetworkPrefix, ParserError> {
+        // Length in bits and bytes
+        let bit_len = self.read_8b()?;
+
+        if bit_len > 32 {
+            return Err(ParserError::InvalidPrefixLength {
+                afi: Afi::Ipv4,
+                bit_length: bit_len,
+            });
+        }
+
+        let byte_len: usize = (bit_len as usize + 7) / 8;
+
+        let mut buff = [0; 4];
+        self.read_exact(&mut buff[..byte_len])?;
+
+        let prefix = match Ipv4Net::new(Ipv4Addr::from(buff), bit_len) {
+            Ok(v) => IpNet::V4(v),
+            Err(_) => unreachable!("Bit length has already been checked"),
+        };
+
+        Ok(NetworkPrefix { prefix, path_id: 0 })
+    }
+
+    /// An alternative to [ReadUtils::read_nlri_prefix] which is easier for the compiler to
+    /// optimize. Calling `x.read_v6_nlri_prefix()` is functionally equivalent to
+    /// `x.read_nlri_prefix(&Afi::Ipv6, false)`.
+    #[inline(always)]
+    fn read_v6_nlri_prefix(&mut self) -> Result<NetworkPrefix, ParserError> {
+        // Length in bits and bytes
+        let bit_len = self.read_8b()?;
+
+        // 16 bytes
+        if bit_len > 128 {
+            return Err(ParserError::InvalidPrefixLength {
+                afi: Afi::Ipv6,
+                bit_length: bit_len,
+            });
+        }
+        let byte_len: usize = (bit_len as usize + 7) / 8;
+
+        let mut buff = [0; 16];
+        self.read_exact(&mut buff[..byte_len])?;
+
+        let prefix = match Ipv6Net::new(Ipv6Addr::from(buff), bit_len) {
+            Ok(v) => IpNet::V6(v),
+            Err(_) => unreachable!("Bit length has already been checked"),
+        };
+
+        Ok(NetworkPrefix { prefix, path_id: 0 })
+    }
+
     /// Read announced/withdrawn prefix.
     ///
     /// The length in bits is 1 byte, and then based on the IP version it reads different number of bytes.
@@ -205,54 +260,79 @@ pub trait ReadUtils: io::Read {
     }
 }
 
-pub fn parse_nlri_list(
-    input: &mut Cursor<&[u8]>,
+#[cold]
+#[inline(never)]
+fn parse_nlri_list_fallback(
+    mut input: &[u8],
+    afi: Afi,
     add_path: bool,
-    afi: &Afi,
-    total_bytes: u64,
 ) -> Result<Vec<NetworkPrefix>, ParserError> {
-    let pos_end = input.position() + total_bytes;
-
-    let mut is_add_path = add_path;
-    let mut prefixes = vec![];
-
-    let mut retry = false;
-    let mut guessed = false;
-
-    let pos_save = input.position();
-
-    while input.position() < pos_end {
-        if !is_add_path && input.get_ref()[input.position() as usize] == 0 {
-            // it's likely that this is a add-path wrongfully wrapped in non-add-path msg
-            debug!("not add-path but with NLRI size to be 0, likely add-path msg in wrong msg type, treat as add-path now");
-            is_add_path = true;
-            guessed = true;
-        }
-        let prefix = match input.read_nlri_prefix(afi, is_add_path) {
-            Ok(p) => p,
-            Err(e) => {
-                if guessed {
-                    retry = true;
-                    break;
-                } else {
-                    return Err(e);
-                }
-            }
-        };
-        prefixes.push(prefix);
-    }
-
-    if retry {
-        prefixes.clear();
-        // try again without attempt to guess add-path
-        input.seek(SeekFrom::Start(pos_save))?;
-        while input.position() < pos_end {
-            let prefix = input.read_nlri_prefix(afi, add_path)?;
-            prefixes.push(prefix);
-        }
+    let mut prefixes = Vec::with_capacity(input.len() / 4);
+    while !input.is_empty() {
+        prefixes.push((&mut input).read_nlri_prefix(&afi, add_path)?);
     }
 
     Ok(prefixes)
+}
+
+fn parse_nlri_list_v4(mut input: &[u8]) -> Result<Vec<NetworkPrefix>, ParserError> {
+    let retry_input = input;
+    let mut prefixes = Vec::with_capacity(input.len() / 3);
+
+    while !input.is_empty() {
+        if input[0] == 0 {
+            return match parse_nlri_list_fallback(retry_input, Afi::Ipv4, true) {
+                Ok(v) => Ok(v),
+                Err(_) => parse_nlri_list_fallback(retry_input, Afi::Ipv4, false),
+            };
+        }
+
+        prefixes.push((&mut input).read_v4_nlri_prefix()?);
+    }
+
+    Ok(prefixes)
+}
+
+fn parse_nlri_list_v6(mut input: &[u8]) -> Result<Vec<NetworkPrefix>, ParserError> {
+    let retry_input = input;
+    let mut prefixes = Vec::with_capacity(input.len() / 5);
+
+    while !input.is_empty() {
+        if input[0] == 0 {
+            return match parse_nlri_list_fallback(retry_input, Afi::Ipv6, true) {
+                Ok(v) => Ok(v),
+                Err(_) => parse_nlri_list_fallback(retry_input, Afi::Ipv6, false),
+            };
+        }
+
+        prefixes.push((&mut input).read_v6_nlri_prefix()?);
+    }
+
+    Ok(prefixes)
+}
+
+pub fn parse_nlri_list(
+    input: &[u8],
+    add_path: bool,
+    afi: Afi,
+) -> Result<Vec<NetworkPrefix>, ParserError> {
+    if add_path {
+        return parse_nlri_list_fallback(input, afi, true);
+    }
+
+    match afi {
+        Afi::Ipv4 => parse_nlri_list_v4(input),
+        Afi::Ipv6 => parse_nlri_list_v6(input),
+    }
+}
+
+#[inline(always)]
+pub fn next_slice_in_cursor<'a>(input: &mut Cursor<&'a [u8]>, length: u64) -> &'a [u8] {
+    let input_ref =
+        &input.get_ref()[input.position() as usize..(input.position() + length) as usize];
+    input.set_position(input.position() + length);
+
+    input_ref
 }
 
 // All types that implement Read can now read prefixes

@@ -9,7 +9,7 @@ use std::net::Ipv4Addr;
 use num_traits::FromPrimitive;
 
 use crate::error::ParserError;
-use crate::parser::{parse_nlri_list, ReadUtils};
+use crate::parser::{next_slice_in_cursor, parse_nlri_list, ReadUtils};
 
 pub struct AttributeParser {
     additional_paths: bool,
@@ -223,7 +223,7 @@ impl AttributeParser {
                 return Err(ParserError::ParseError(format!(
                     "Invalid AS path segment type: {}",
                     segment_type
-                )))
+                )));
             }
         };
 
@@ -394,67 +394,59 @@ impl AttributeParser {
         reachable: bool,
         total_bytes: usize,
     ) -> Result<AttributeValue, ParserError> {
-        let first_byte_zero = input.get_ref()[input.position() as usize] == 0;
-        let pos_end = input.position() + total_bytes as u64;
+        let mut input_bytes = next_slice_in_cursor(input, total_bytes as u64);
+
+        let first_byte_zero = input_bytes[0] == 0;
 
         // read address family
         let afi = match afi {
             Some(afi) => {
                 if first_byte_zero {
-                    input.read_afi()?
+                    (&mut input_bytes).read_afi()?
                 } else {
                     afi.to_owned()
                 }
             }
-            None => input.read_afi()?,
+            None => (&mut input_bytes).read_afi()?,
         };
         let safi = match safi {
             Some(safi) => {
                 if first_byte_zero {
-                    input.read_safi()?
+                    (&mut input_bytes).read_safi()?
                 } else {
                     safi.to_owned()
                 }
             }
-            None => input.read_safi()?,
+            None => (&mut input_bytes).read_safi()?,
         };
 
         let mut next_hop = None;
         if reachable {
-            let next_hop_length = input.read_8b()?;
-            next_hop = match self.parse_mp_next_hop(next_hop_length, input) {
-                Ok(x) => x,
-                Err(e) => return Err(e),
-            };
+            let next_hop_length = (&mut input_bytes).read_8b()?;
+            next_hop = self.parse_mp_next_hop(next_hop_length, &mut input_bytes)?;
         }
-
-        let mut bytes_left = pos_end - input.position();
 
         let prefixes = match prefixes {
             Some(pfxs) => {
                 // skip parsing prefixes: https://datatracker.ietf.org/doc/html/rfc6396#section-4.3.4
                 if first_byte_zero {
-                    if reachable {
-                        // skip reserved byte for reachable NRLI
-                        if input.read_8b()? != 0 {
-                            warn!("NRLI reserved byte not 0");
-                        }
-                        bytes_left -= 1;
+                    // skip reserved byte for reachable NRLI
+                    if reachable && (&mut input_bytes).read_8b()? != 0 {
+                        warn!("NRLI reserved byte not 0");
                     }
-                    parse_nlri_list(input, self.additional_paths, &afi, bytes_left)?
+
+                    parse_nlri_list(input_bytes, self.additional_paths, afi)?
                 } else {
                     pfxs.to_vec()
                 }
             }
             None => {
-                if reachable {
-                    // skip reserved byte for reachable NRLI
-                    if input.read_8b()? != 0 {
-                        warn!("NRLI reserved byte not 0");
-                    }
-                    bytes_left -= 1;
+                // skip reserved byte for reachable NRLI
+                if reachable && (&mut input_bytes).read_8b()? != 0 {
+                    warn!("NRLI reserved byte not 0");
                 }
-                parse_nlri_list(input, self.additional_paths, &afi, bytes_left)?
+
+                parse_nlri_list(input_bytes, self.additional_paths, afi)?
             }
         };
 
@@ -478,7 +470,7 @@ impl AttributeParser {
     fn parse_mp_next_hop(
         &self,
         next_hop_length: u8,
-        input: &mut Cursor<&[u8]>,
+        input: &mut &[u8],
     ) -> Result<Option<NextHopAddress>, ParserError> {
         let output = match next_hop_length {
             0 => None,

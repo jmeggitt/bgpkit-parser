@@ -1,7 +1,6 @@
 use crate::models::*;
 use crate::parser::ReadUtils;
 use crate::ParserError;
-use bytes::Bytes;
 
 /// parse RFC9234 OnlyToCustomer attribute.
 ///
@@ -19,7 +18,7 @@ use bytes::Bytes;
 /// 1. If a route is to be advertised to a Customer, a Peer, or an RS-Client (when the sender is an RS), and the OTC Attribute is not present, then when advertising the route, an OTC Attribute MUST be added with a value equal to the AS number of the local AS.
 /// 2. If a route already contains the OTC Attribute, it MUST NOT be propagated to Providers, Peers, or RSes.
 /// ```
-pub fn parse_only_to_customer(mut input: Bytes) -> Result<AttributeValue, ParserError> {
+pub fn parse_only_to_customer(mut input: &[u8]) -> Result<AttributeValue, ParserError> {
     let remote_asn = input.read_u32()?;
     Ok(AttributeValue::OnlyToCustomer(remote_asn))
 }
@@ -30,9 +29,7 @@ mod tests {
 
     #[test]
     fn test_parse_otc() {
-        if let Ok(AttributeValue::OnlyToCustomer(123)) =
-            parse_only_to_customer(Bytes::from(vec![0, 0, 0, 123]))
-        {
+        if let Ok(AttributeValue::OnlyToCustomer(123)) = parse_only_to_customer(&[0, 0, 0, 123]) {
         } else {
             panic!("parsing error")
         }

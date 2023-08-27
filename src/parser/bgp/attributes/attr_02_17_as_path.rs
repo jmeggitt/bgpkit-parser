@@ -2,7 +2,7 @@ use crate::models::attributes::AttributeValue;
 use crate::models::*;
 use crate::parser::ReadUtils;
 use crate::ParserError;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 
 const AS_PATH_AS_SET: u8 = 1;
 const AS_PATH_AS_SEQUENCE: u8 = 2;
@@ -10,7 +10,7 @@ const AS_PATH_AS_SEQUENCE: u8 = 2;
 const AS_PATH_CONFED_SEQUENCE: u8 = 3;
 const AS_PATH_CONFED_SET: u8 = 4;
 
-pub fn parse_as_path(mut input: Bytes, asn_len: &AsnLength) -> Result<AttributeValue, ParserError> {
+pub fn parse_as_path(mut input: &[u8], asn_len: &AsnLength) -> Result<AttributeValue, ParserError> {
     let mut output = AsPath {
         segments: Vec::with_capacity(5),
     };
@@ -22,7 +22,7 @@ pub fn parse_as_path(mut input: Bytes, asn_len: &AsnLength) -> Result<AttributeV
 }
 
 fn parse_as_path_segment(
-    input: &mut Bytes,
+    input: &mut &[u8],
     asn_len: &AsnLength,
 ) -> Result<AsPathSegment, ParserError> {
     let segment_type = input.read_u8()?;
@@ -74,13 +74,13 @@ mod tests {
     /// ```
     #[test]
     fn test_parse_as_path() {
-        let data = Bytes::from(vec![
+        let data = &[
             2, // sequence
             3, // 3 ASes in path
             0, 1, // AS1
             0, 2, // AS2
             0, 3, // AS3
-        ]);
+        ];
         let res = parse_as_path(data, &AsnLength::Bits16).unwrap();
 
         assert!(matches!(res, AsPath(_)));
@@ -96,13 +96,13 @@ mod tests {
         //////////////////////
         // 16 bits sequence //
         //////////////////////
-        let mut data = Bytes::from(vec![
+        let mut data: &[u8] = &[
             2, // sequence
             3, // 3 ASes in path
             0, 1, // AS1
             0, 2, // AS2
             0, 3, // AS3
-        ]);
+        ];
         let res = parse_as_path_segment(&mut data, &AsnLength::Bits16).unwrap();
 
         assert!(matches!(res, AsPathSegment::AsSequence(_)));
@@ -116,13 +116,13 @@ mod tests {
         //////////////////////
         // 16 bits sequence //
         //////////////////////
-        let mut data = Bytes::from(vec![
+        let mut data: &[u8] = &[
             2, // sequence
             3, // 3 ASes in path
             0, 0, 0, 1, // AS1
             0, 0, 0, 2, // AS2
             0, 0, 0, 3, // AS3
-        ]);
+        ];
         let res = parse_as_path_segment(&mut data, &AsnLength::Bits32).unwrap();
         assert!(matches!(res, AsPathSegment::AsSequence(_)));
         if let AsPathSegment::AsSequence(p) = res {
@@ -135,35 +135,35 @@ mod tests {
         /////////////////
         // other types //
         /////////////////
-        let mut data = Bytes::from(vec![
+        let mut data: &[u8] = &[
             1, // AS Set
             1, // 1 AS in path
             0, 1,
-        ]);
+        ];
         let res = parse_as_path_segment(&mut data, &AsnLength::Bits16).unwrap();
         assert!(matches!(res, AsPathSegment::AsSet(_)));
 
-        let mut data = Bytes::from(vec![
+        let mut data: &[u8] = &[
             3, // Confed Sequence
             1, // 1 AS in path
             0, 1,
-        ]);
+        ];
         let res = parse_as_path_segment(&mut data, &AsnLength::Bits16).unwrap();
         assert!(matches!(res, AsPathSegment::ConfedSequence(_)));
 
-        let mut data = Bytes::from(vec![
+        let mut data: &[u8] = &[
             4, // Confed Set
             1, // 1 AS in path
             0, 1,
-        ]);
+        ];
         let res = parse_as_path_segment(&mut data, &AsnLength::Bits16).unwrap();
         assert!(matches!(res, AsPathSegment::ConfedSet(_)));
 
-        let mut data = Bytes::from(vec![
+        let mut data: &[u8] = &[
             5, // ERROR
             1, // 1 AS in path
             0, 1,
-        ]);
+        ];
         let res = parse_as_path_segment(&mut data, &AsnLength::Bits16).unwrap_err();
         assert!(matches!(res, ParserError::ParseError(_)));
     }

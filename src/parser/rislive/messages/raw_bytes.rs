@@ -2,7 +2,6 @@ use crate::models::*;
 use crate::parser::bgp::parse_bgp_message;
 use crate::parser::rislive::error::ParserRisliveError;
 use crate::Elementor;
-use bytes::Bytes;
 use serde_json::Value;
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -24,7 +23,8 @@ pub fn parse_raw_bytes(msg_str: &str) -> Result<Vec<BgpElem>, ParserRisliveError
 
     let data = msg.get("data").unwrap().as_object().unwrap();
 
-    let mut bytes = Bytes::from(hex::decode(data.get("raw").unwrap().as_str().unwrap()).unwrap());
+    let buffer = hex::decode(data.get("raw").unwrap().as_str().unwrap()).unwrap();
+    let mut bytes = &buffer[..];
 
     let timestamp = data.get("timestamp").unwrap().as_f64().unwrap();
     let peer_str = data.get("peer").unwrap().as_str().unwrap().to_owned();

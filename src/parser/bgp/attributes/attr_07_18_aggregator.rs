@@ -1,7 +1,7 @@
 use crate::models::*;
 use crate::parser::ReadUtils;
 use crate::ParserError;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use log::warn;
 
 /// Parse aggregator attribute.
@@ -16,7 +16,7 @@ use log::warn;
 ///    IP address SHOULD be the same as the BGP Identifier of the speaker.`
 /// ```
 pub fn parse_aggregator(
-    mut input: Bytes,
+    mut input: &[u8],
     asn_len: &AsnLength,
 ) -> Result<AttributeValue, ParserError> {
     let asn_len_found = match input.remaining() {
@@ -54,9 +54,8 @@ mod tests {
         let mut data = vec![];
         data.extend([1u8, 2]);
         data.extend(identifier.octets());
-        let bytes = Bytes::from(data);
 
-        if let Ok(AttributeValue::Aggregator(asn, n)) = parse_aggregator(bytes, &AsnLength::Bits16)
+        if let Ok(AttributeValue::Aggregator(asn, n)) = parse_aggregator(&data, &AsnLength::Bits16)
         {
             assert_eq!(n, identifier);
             assert_eq!(
@@ -73,9 +72,8 @@ mod tests {
         let mut data = vec![];
         data.extend([0u8, 0, 1, 2]);
         data.extend(identifier.octets());
-        let bytes = Bytes::from(data);
 
-        if let Ok(AttributeValue::Aggregator(asn, n)) = parse_aggregator(bytes, &AsnLength::Bits32)
+        if let Ok(AttributeValue::Aggregator(asn, n)) = parse_aggregator(&data, &AsnLength::Bits32)
         {
             assert_eq!(n, identifier);
             assert_eq!(

@@ -1,7 +1,7 @@
 use crate::models::*;
 use crate::parser::bmp::error::ParserBmpError;
 use crate::parser::ReadUtils;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use num_traits::FromPrimitive;
 use std::net::IpAddr;
 
@@ -51,7 +51,7 @@ pub struct BmpCommonHeader {
     pub msg_type: BmpMsgType,
 }
 
-pub fn parse_bmp_common_header(data: &mut Bytes) -> Result<BmpCommonHeader, ParserBmpError> {
+pub fn parse_bmp_common_header(data: &mut &[u8]) -> Result<BmpCommonHeader, ParserBmpError> {
     let version = data.read_u8()?;
     if version != 3 {
         // has to be 3 per rfc7854
@@ -112,7 +112,7 @@ pub enum PeerType {
     LocalInstancePeer = 2,
 }
 
-pub fn parse_per_peer_header(data: &mut Bytes) -> Result<BmpPerPeerHeader, ParserBmpError> {
+pub fn parse_per_peer_header(data: &mut &[u8]) -> Result<BmpPerPeerHeader, ParserBmpError> {
     let peer_type = PeerType::from_u8(data.read_u8()?).unwrap();
 
     let peer_flags = data.read_u8()?;

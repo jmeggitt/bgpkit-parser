@@ -1,6 +1,6 @@
 use crate::parser::bmp::error::ParserBmpError;
 use crate::parser::ReadUtils;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use num_traits::FromPrimitive;
 
 #[derive(Debug)]
@@ -24,7 +24,7 @@ pub enum TerminationTlvType {
     Reason = 1,
 }
 
-pub fn parse_termination_message(data: &mut Bytes) -> Result<TerminationMessage, ParserBmpError> {
+pub fn parse_termination_message(data: &mut &[u8]) -> Result<TerminationMessage, ParserBmpError> {
     let mut tlvs = vec![];
 
     while data.remaining() > 4 {

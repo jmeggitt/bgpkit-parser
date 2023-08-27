@@ -3,7 +3,7 @@ use crate::models::*;
 use crate::parser::{
     parse_bgp4mp, parse_table_dump_message, parse_table_dump_v2_message, ParserErrorWithBytes,
 };
-use bytes::{Buf, Bytes, BytesMut};
+use bytes::Buf;
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::io::Read;
 
@@ -44,7 +44,7 @@ use std::io::Read;
 pub fn parse_common_header<T: Read>(input: &mut T) -> Result<CommonHeader, ParserError> {
     let mut raw_bytes = [0u8; 12];
     input.read_exact(&mut raw_bytes)?;
-    let mut data = BytesMut::from(&raw_bytes[..]);
+    let mut data = &raw_bytes[..];
 
     let timestamp = data.get_u32();
     let entry_type_raw = data.get_u16();
@@ -59,7 +59,7 @@ pub fn parse_common_header<T: Read>(input: &mut T) -> Result<CommonHeader, Parse
             length -= 4;
             let mut raw_bytes: [u8; 4] = [0; 4];
             input.read_exact(&mut raw_bytes)?;
-            Some(BytesMut::from(&raw_bytes[..]).get_u32())
+            Some(u32::from_be_bytes(raw_bytes))
         }
         _ => None,
     };
@@ -91,25 +91,18 @@ pub fn parse_mrt_record(input: &mut impl Read) -> Result<MrtRecord, ParserErrorW
     };
 
     // read the whole message bytes to buffer
-    let mut buffer = BytesMut::with_capacity(common_header.length as usize);
-    buffer.resize(common_header.length as usize, 0);
-    match input
-        .take(common_header.length as u64)
-        .read_exact(&mut buffer)
-    {
-        Ok(_) => {}
-        Err(e) => {
-            return Err(ParserErrorWithBytes {
-                error: ParserError::IoError(e),
-                bytes: None,
-            })
-        }
+    let mut buffer = vec![0; common_header.length as usize];
+    if let Err(e) = input.read_exact(&mut buffer) {
+        return Err(ParserErrorWithBytes {
+            error: ParserError::IoError(e),
+            bytes: None,
+        });
     }
 
     match parse_mrt_body(
         common_header.entry_type.to_u16().unwrap(),
         common_header.entry_subtype,
-        buffer.freeze(), // freeze the BytesMute to Bytes
+        &buffer, // freeze the BytesMute to Bytes
     ) {
         Ok(message) => Ok(MrtRecord {
             common_header,
@@ -143,7 +136,7 @@ pub fn parse_mrt_record(input: &mut impl Read) -> Result<MrtRecord, ParserErrorW
 fn parse_mrt_body(
     entry_type: u16,
     entry_subtype: u16,
-    data: Bytes,
+    data: &[u8],
 ) -> Result<MrtMessage, ParserError> {
     let etype = match EntryType::from_u16(entry_type) {
         Some(t) => Ok(t),

@@ -8,10 +8,10 @@ use crate::parser::ReadUtils;
 use crate::ParserError;
 use num_traits::FromPrimitive;
 
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use std::net::Ipv4Addr;
 
-pub fn parse_extended_community(mut input: Bytes) -> Result<AttributeValue, ParserError> {
+pub fn parse_extended_community(mut input: &[u8]) -> Result<AttributeValue, ParserError> {
     let mut communities = Vec::new();
 
     while input.remaining() > 0 {
@@ -156,7 +156,7 @@ pub fn parse_extended_community(mut input: Bytes) -> Result<AttributeValue, Pars
     Ok(AttributeValue::ExtendedCommunities(communities))
 }
 
-pub fn parse_ipv6_extended_community(mut input: Bytes) -> Result<AttributeValue, ParserError> {
+pub fn parse_ipv6_extended_community(mut input: &[u8]) -> Result<AttributeValue, ParserError> {
     let mut communities = Vec::new();
     while input.remaining() > 0 {
         let ec_type_u8 = input.read_u8()?;
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_parse_extended_communities_two_octet_as() {
-        let data: Vec<u8> = vec![
+        let data = [
             0x00, // Transitive Two Octet AS Specific
             0x02, // Route Target
             0x00, 0x01, // AS 1
@@ -196,7 +196,7 @@ mod tests {
         ];
 
         if let AttributeValue::ExtendedCommunities(communities) =
-            parse_extended_community(Bytes::from(data)).unwrap()
+            parse_extended_community(&data).unwrap()
         {
             assert_eq!(communities.len(), 1);
             if let ExtendedCommunity::TransitiveTwoOctetAsSpecific(community) = &communities[0] {
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_parse_extended_communities_ipv4() {
-        let data: Vec<u8> = vec![
+        let data = [
             0x01, // Transitive IPv4 Address Specific
             0x02, // Route Target
             0xC0, 0x00, 0x02, 0x01, // ipv4: 192.0.2.1
@@ -222,7 +222,7 @@ mod tests {
         ];
 
         if let AttributeValue::ExtendedCommunities(communities) =
-            parse_extended_community(Bytes::from(data)).unwrap()
+            parse_extended_community(&data).unwrap()
         {
             assert_eq!(communities.len(), 1);
             if let ExtendedCommunity::TransitiveIpv4AddressSpecific(community) = &communities[0] {
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_parse_extended_communities_four_octet_as() {
-        let data: Vec<u8> = vec![
+        let data = [
             0x02, // Transitive Four Octet AS Specific
             0x02, // Route Target
             0x00, 0x00, 0x00, 0x01, // AS 1
@@ -248,7 +248,7 @@ mod tests {
         ];
 
         if let AttributeValue::ExtendedCommunities(communities) =
-            parse_extended_community(Bytes::from(data)).unwrap()
+            parse_extended_community(&data).unwrap()
         {
             assert_eq!(communities.len(), 1);
             if let ExtendedCommunity::TransitiveFourOctetAsSpecific(community) = &communities[0] {
@@ -266,14 +266,14 @@ mod tests {
 
     #[test]
     fn test_parse_extended_communities_opaque() {
-        let data: Vec<u8> = vec![
+        let data = [
             0x03, // Transitive Opaque
             0x02, // Route Target
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // Opaque
         ];
 
         if let AttributeValue::ExtendedCommunities(communities) =
-            parse_extended_community(Bytes::from(data)).unwrap()
+            parse_extended_community(&data).unwrap()
         {
             assert_eq!(communities.len(), 1);
             if let ExtendedCommunity::TransitiveOpaque(community) = &communities[0] {
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_parse_extended_communities_ipv6() {
-        let data: Vec<u8> = vec![
+        let data = [
             0x40, // Transitive IPv6 Address Specific
             0x02, // Route Target
             0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -299,7 +299,7 @@ mod tests {
         ];
 
         if let AttributeValue::ExtendedCommunities(communities) =
-            parse_ipv6_extended_community(Bytes::from(data)).unwrap()
+            parse_ipv6_extended_community(&data).unwrap()
         {
             assert_eq!(communities.len(), 1);
             if let ExtendedCommunity::Ipv6AddressSpecific(community) = &communities[0] {

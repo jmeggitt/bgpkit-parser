@@ -2,7 +2,7 @@ use crate::models::*;
 use crate::parser::bgp::messages::parse_bgp_open_message;
 use crate::parser::bmp::error::ParserBmpError;
 use crate::parser::ReadUtils;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use std::net::IpAddr;
 
 #[derive(Debug)]
@@ -23,7 +23,7 @@ pub struct PeerUpNotificationTlv {
 }
 
 pub fn parse_peer_up_notification(
-    data: &mut Bytes,
+    data: &mut &[u8],
     afi: &Afi,
 ) -> Result<PeerUpNotification, ParserBmpError> {
     let local_addr: IpAddr = match afi {

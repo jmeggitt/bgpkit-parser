@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::models::*;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use log::debug;
 use num_traits::FromPrimitive;
 use std::net::IpAddr;
@@ -16,7 +16,7 @@ use std::net::IpAddr;
 use crate::error::ParserError;
 use crate::ParserError::IoNotEnoughBytes;
 
-impl ReadUtils for Bytes {}
+impl<T: Buf> ReadUtils for T {}
 
 // Allow reading IPs from Reads
 pub trait ReadUtils: Buf {
@@ -251,7 +251,7 @@ pub trait ReadUtils: Buf {
 }
 
 pub fn parse_nlri_list(
-    mut input: Bytes,
+    mut input: &[u8],
     add_path: bool,
     afi: &Afi,
 ) -> Result<Vec<NetworkPrefix>, ParserError> {
@@ -270,7 +270,7 @@ pub fn parse_nlri_list(
             // cloning the data bytes
             is_add_path = true;
             guessed = true;
-            input_copy = Some(input.clone());
+            input_copy = Some(input);
         }
         let prefix = match input.read_nlri_prefix(afi, is_add_path) {
             Ok(p) => p,

@@ -1,7 +1,7 @@
 use crate::error::ParserError;
 use crate::models::*;
 use crate::parser::{AttributeParser, ReadUtils};
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 use log::warn;
 use num_traits::FromPrimitive;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ use std::net::{IpAddr, Ipv4Addr};
 ///
 pub fn parse_table_dump_v2_message(
     sub_type: u16,
-    mut input: Bytes,
+    mut input: &[u8],
 ) -> Result<TableDumpV2Message, ParserError> {
     let v2_type: TableDumpV2Type = match TableDumpV2Type::from_u16(sub_type) {
         Some(t) => t,
@@ -63,7 +63,7 @@ pub fn parse_table_dump_v2_message(
 /// Peer index table
 ///
 /// RFC: https://www.rfc-editor.org/rfc/rfc6396#section-4.3.1
-pub fn parse_peer_index_table(mut data: Bytes) -> Result<PeerIndexTable, ParserError> {
+pub fn parse_peer_index_table(mut data: &[u8]) -> Result<PeerIndexTable, ParserError> {
     let collector_bgp_id = Ipv4Addr::from(data.read_u32()?);
     // read and ignore view name
     let view_name_length = data.read_u16()?;
@@ -113,7 +113,7 @@ pub fn parse_peer_index_table(mut data: Bytes) -> Result<PeerIndexTable, ParserE
 ///
 /// https://tools.ietf.org/html/rfc6396#section-4.3
 pub fn parse_rib_afi_entries(
-    data: &mut Bytes,
+    data: &mut &[u8],
     rib_type: TableDumpV2Type,
 ) -> Result<RibAfiEntries, ParserError> {
     let afi: Afi;
@@ -184,7 +184,7 @@ pub fn parse_rib_afi_entries(
 }
 
 pub fn parse_rib_entry(
-    input: &mut Bytes,
+    input: &mut &[u8],
     add_path: bool,
     afi: &Afi,
     safi: &Safi,
@@ -209,7 +209,8 @@ pub fn parse_rib_entry(
 
     let attr_parser = AttributeParser::new(add_path);
 
-    let attr_data_slice = input.split_to(attribute_length);
+    let (attr_data_slice, remaining) = input.split_at(attribute_length);
+    *input = remaining;
     let attributes = attr_parser.parse_attributes(
         attr_data_slice,
         &AsnLength::Bits32,

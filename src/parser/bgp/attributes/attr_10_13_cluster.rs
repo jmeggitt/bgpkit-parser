@@ -1,9 +1,9 @@
 use crate::models::*;
 use crate::parser::ReadUtils;
 use crate::ParserError;
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 
-pub fn parse_clusters(mut input: Bytes, afi: &Option<Afi>) -> Result<AttributeValue, ParserError> {
+pub fn parse_clusters(mut input: &[u8], afi: &Option<Afi>) -> Result<AttributeValue, ParserError> {
     // FIXME: in https://tools.ietf.org/html/rfc4456, the CLUSTER_LIST is a set of CLUSTER_ID each represented by a 4-byte number
     let mut clusters = Vec::new();
     while input.remaining() > 0 {
@@ -26,10 +26,10 @@ mod tests {
     #[test]
     fn test_parse_clusters() {
         if let Ok(AttributeValue::Clusters(n)) = parse_clusters(
-            Bytes::from(vec![
+            &[
                 0xC0, 0x00, 0x02, 0x01, // 192.0.2.1
                 0xC0, 0x00, 0x02, 0x02, // 192.0.2.2
-            ]),
+            ],
             &None,
         ) {
             assert_eq!(n.len(), 2);

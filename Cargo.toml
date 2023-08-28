@@ -31,7 +31,6 @@ ipnet = {version="2.7", optional = true}
 #######################
 # Parser dependencies #
 #######################
-bytes = {version = "1.4.0", optional = true}
 hex= {version = "0.4.3", optional = true} # bmp/openbmp parsing
 log= {version = "0.4", optional = true }
 oneio = {version= "0.11.0", features=["lib"], optional = true }
@@ -54,7 +53,6 @@ models = [
     "num-traits",
 ]
 parser = [
-    "bytes",
     "chrono",
     "env_logger",
     "log",

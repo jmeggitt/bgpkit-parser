@@ -2,8 +2,8 @@ use crate::error::ParserError;
 use crate::models::*;
 use crate::parser::{
     parse_bgp4mp, parse_table_dump_message, parse_table_dump_v2_message, ParserErrorWithBytes,
+    ReadUtils,
 };
-use bytes::Buf;
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::io::Read;
 
@@ -46,13 +46,13 @@ pub fn parse_common_header<T: Read>(input: &mut T) -> Result<CommonHeader, Parse
     input.read_exact(&mut raw_bytes)?;
     let mut data = &raw_bytes[..];
 
-    let timestamp = data.get_u32();
-    let entry_type_raw = data.get_u16();
+    let timestamp = data.read_u32()?;
+    let entry_type_raw = data.read_u16()?;
     let entry_type = EntryType::from_u16(entry_type_raw).ok_or_else(|| {
         ParserError::ParseError(format!("Failed to parse entry type: {}", entry_type_raw))
     })?;
-    let entry_subtype = data.get_u16();
-    let mut length = data.get_u32();
+    let entry_subtype = data.read_u16()?;
+    let mut length = data.read_u32()?;
 
     let microsecond_timestamp = match &entry_type {
         EntryType::BGP4MP_ET => {

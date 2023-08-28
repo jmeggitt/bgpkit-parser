@@ -1,7 +1,6 @@
 use crate::models::*;
 use crate::parser::ReadUtils;
 use crate::ParserError;
-use bytes::Buf;
 
 pub fn parse_clusters(mut input: &[u8], afi: &Option<Afi>) -> Result<AttributeValue, ParserError> {
     // FIXME: in https://tools.ietf.org/html/rfc4456, the CLUSTER_LIST is a set of CLUSTER_ID each represented by a 4-byte number

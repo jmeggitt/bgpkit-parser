@@ -1,6 +1,5 @@
 use crate::parser::bmp::error::ParserBmpError;
 use crate::parser::ReadUtils;
-use bytes::Buf;
 use num_traits::FromPrimitive;
 
 #[derive(Debug)]
@@ -29,8 +28,8 @@ pub fn parse_initiation_message(data: &mut &[u8]) -> Result<InitiationMessage, P
     let mut tlvs = vec![];
 
     while data.remaining() > 4 {
-        let info_type: InitiationTlvType = InitiationTlvType::from_u16(data.get_u16()).unwrap();
-        let info_len = data.get_u16();
+        let info_type: InitiationTlvType = InitiationTlvType::from_u16(data.read_u16()?).unwrap();
+        let info_len = data.read_u16()?;
         if data.remaining() < info_len as usize {
             // not enough bytes to read
             break;

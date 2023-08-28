@@ -2,13 +2,14 @@
 Provides IO utility functions for read bytes of different length and converting to corresponding structs.
 */
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
+use std::convert::TryInto;
+use std::io::Read;
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr},
 };
 
 use crate::models::*;
-use bytes::Buf;
 use log::debug;
 use num_traits::FromPrimitive;
 use std::net::IpAddr;
@@ -16,41 +17,89 @@ use std::net::IpAddr;
 use crate::error::ParserError;
 use crate::ParserError::IoNotEnoughBytes;
 
-impl<T: Buf> ReadUtils for T {}
+#[cold]
+fn eof() -> ParserError {
+    IoNotEnoughBytes()
+}
 
-// Allow reading IPs from Reads
-pub trait ReadUtils: Buf {
+impl ReadUtils for &'_ [u8] {
     #[inline]
-    fn has_n_remaining(&self, n: usize) -> Result<(), ParserError> {
-        if self.remaining() < n {
-            Err(IoNotEnoughBytes())
-        } else {
-            Ok(())
+    fn remaining(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
+    fn advance(&mut self, x: usize) -> Result<(), ParserError> {
+        if self.len() >= x {
+            *self = &self[x..];
+            return Ok(());
         }
+
+        Err(eof())
     }
 
     #[inline]
     fn read_u8(&mut self) -> Result<u8, ParserError> {
-        self.has_n_remaining(1)?;
-        Ok(self.get_u8())
+        if !self.is_empty() {
+            let value = self[0];
+            *self = &self[1..];
+            return Ok(value);
+        }
+
+        Err(eof())
     }
 
     #[inline]
     fn read_u16(&mut self) -> Result<u16, ParserError> {
-        self.has_n_remaining(2)?;
-        Ok(self.get_u16())
+        if self.len() >= 2 {
+            let (bytes, remaining) = self.split_at(2);
+            *self = remaining;
+            return Ok(u16::from_be_bytes(bytes.try_into().unwrap()));
+        }
+
+        Err(eof())
     }
 
     #[inline]
     fn read_u32(&mut self) -> Result<u32, ParserError> {
-        self.has_n_remaining(4)?;
-        Ok(self.get_u32())
+        if self.len() >= 4 {
+            let (bytes, remaining) = self.split_at(4);
+            *self = remaining;
+            return Ok(u32::from_be_bytes(bytes.try_into().unwrap()));
+        }
+
+        Err(eof())
     }
 
     #[inline]
     fn read_u64(&mut self) -> Result<u64, ParserError> {
-        self.has_n_remaining(8)?;
-        Ok(self.get_u64())
+        if self.len() >= 8 {
+            let (bytes, remaining) = self.split_at(8);
+            *self = remaining;
+            return Ok(u64::from_be_bytes(bytes.try_into().unwrap()));
+        }
+
+        Err(eof())
+    }
+}
+
+// Allow reading IPs from Reads
+pub trait ReadUtils: Read {
+    fn remaining(&self) -> usize;
+    fn advance(&mut self, x: usize) -> Result<(), ParserError>;
+    fn read_u8(&mut self) -> Result<u8, ParserError>;
+    fn read_u16(&mut self) -> Result<u16, ParserError>;
+    fn read_u32(&mut self) -> Result<u32, ParserError>;
+    fn read_u64(&mut self) -> Result<u64, ParserError>;
+
+    /// Check that the buffer has at least n bytes remaining. This can help the compiler optimize
+    /// away bounds checks by
+    #[inline(always)]
+    fn has_n_remaining(&self, n: usize) -> Result<(), ParserError> {
+        if self.remaining() < n {
+            return Err(eof());
+        }
+        Ok(())
     }
 
     fn read_address(&mut self, afi: &Afi) -> io::Result<IpAddr> {
@@ -78,9 +127,9 @@ pub trait ReadUtils: Buf {
     }
 
     fn read_ipv6_address(&mut self) -> Result<Ipv6Addr, ParserError> {
-        self.has_n_remaining(16)?;
-        let buf = self.get_u128();
-        Ok(Ipv6Addr::from(buf))
+        let mut buffer = [0; 16];
+        self.read_exact(&mut buffer)?;
+        Ok(Ipv6Addr::from(buffer))
     }
 
     fn read_ipv4_prefix(&mut self) -> Result<Ipv4Net, ParserError> {
@@ -126,7 +175,7 @@ pub trait ReadUtils: Buf {
             AsnLength::Bits16 => {
                 self.has_n_remaining(count * 2)?; // 2 bytes for 16-bit ASN
                 for i in 0..count {
-                    path[i] = self.get_u16() as u32;
+                    path[i] = self.read_u16()? as u32;
                 }
                 path[..count]
                     .iter()
@@ -139,7 +188,7 @@ pub trait ReadUtils: Buf {
             AsnLength::Bits32 => {
                 self.has_n_remaining(count * 4)?; // 4 bytes for 32-bit ASN
                 for i in 0..count {
-                    path[i] = self.get_u32();
+                    path[i] = self.read_u32()?;
                 }
                 path[..count]
                     .iter()
@@ -203,7 +252,7 @@ pub trait ReadUtils: Buf {
                 let mut buff = [0; 4];
                 self.has_n_remaining(byte_len)?;
                 for i in 0..byte_len {
-                    buff[i] = self.get_u8();
+                    buff[i] = self.read_u8()?;
                 }
                 IpAddr::V4(Ipv4Addr::from(buff))
             }
@@ -218,7 +267,7 @@ pub trait ReadUtils: Buf {
                 self.has_n_remaining(byte_len)?;
                 let mut buff = [0; 16];
                 for i in 0..byte_len {
-                    buff[i] = self.get_u8();
+                    buff[i] = self.read_u8()?;
                 }
                 IpAddr::V6(Ipv6Addr::from(buff))
             }
@@ -237,8 +286,9 @@ pub trait ReadUtils: Buf {
     }
 
     fn read_n_bytes(&mut self, n_bytes: usize) -> Result<Vec<u8>, ParserError> {
-        self.has_n_remaining(n_bytes)?;
-        Ok(self.copy_to_bytes(n_bytes).into())
+        let mut buffer = vec![0; n_bytes];
+        self.read_exact(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn read_n_bytes_to_string(&mut self, n_bytes: usize) -> Result<String, ParserError> {

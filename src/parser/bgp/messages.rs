@@ -1,5 +1,4 @@
 use crate::models::*;
-use bytes::Buf;
 use num_traits::FromPrimitive;
 
 use crate::error::ParserError;
@@ -31,7 +30,7 @@ pub fn parse_bgp_message(
 ) -> Result<BgpMessage, ParserError> {
     let total_size = data.len();
     data.has_n_remaining(19)?;
-    data.advance(16);
+    data.advance(16)?;
     /*
     This 2-octet unsigned integer indicates the total length of the
     message, including the header in octets.  Thus, it allows one
@@ -43,7 +42,7 @@ pub fn parse_bgp_message(
     have the smallest value required, given the rest of the
     message.
     */
-    let length = data.get_u16();
+    let length = data.read_u16()?;
     if !(19..=4096).contains(&length) {
         return Err(ParserError::ParseError(format!(
             "invalid BGP message length {}",
@@ -57,7 +56,7 @@ pub fn parse_bgp_message(
         length as usize - 19
     };
 
-    let msg_type: BgpMessageType = match BgpMessageType::from_u8(data.get_u8()) {
+    let msg_type: BgpMessageType = match BgpMessageType::from_u8(data.read_u8()?) {
         Some(t) => t,
         None => {
             return Err(ParserError::ParseError(
@@ -122,15 +121,15 @@ pub fn parse_bgp_notification_message(
 /// The parsing of BGP OPEN messages also includes decoding the BGP capabilities.
 pub fn parse_bgp_open_message(input: &mut &[u8]) -> Result<BgpOpenMessage, ParserError> {
     input.has_n_remaining(10)?;
-    let version = input.get_u8();
+    let version = input.read_u8()?;
     let asn = Asn {
-        asn: input.get_u16() as u32,
+        asn: input.read_u16()? as u32,
         len: AsnLength::Bits16,
     };
-    let hold_time = input.get_u16();
+    let hold_time = input.read_u16()?;
 
     let sender_ip = input.read_ipv4_address()?;
-    let opt_params_len = input.get_u8();
+    let opt_params_len = input.read_u8()?;
 
     // let pos_end = input.position() + opt_params_len as u64;
     if input.remaining() != opt_params_len as usize {
@@ -146,7 +145,7 @@ pub fn parse_bgp_open_message(input: &mut &[u8]) -> Result<BgpOpenMessage, Parse
 
     let mut params: Vec<OptParam> = vec![];
     while input.remaining() >= 2 {
-        let param_type = input.get_u8();
+        let param_type = input.read_u8()?;
         if first {
             // first parameter, check if it is extended length message
             if opt_params_len == 255 && param_type == 255 {
@@ -159,7 +158,7 @@ pub fn parse_bgp_open_message(input: &mut &[u8]) -> Result<BgpOpenMessage, Parse
         }
         // reaching here means all the remain params are regular non-extended-length parameters
 
-        let parm_length = input.get_u8();
+        let parm_length = input.read_u8()?;
         // https://tools.ietf.org/html/rfc3392
         // https://www.iana.org/assignments/bgp-parameters/bgp-parameters.xhtml#bgp-parameters-11
 
@@ -222,7 +221,7 @@ fn read_nlri(
     if length == 1 {
         // 1 byte does not make sense
         warn!("seeing strange one-byte NLRI field");
-        input.advance(1); // skip the byte
+        input.advance(1)?; // skip the byte
         return Ok(vec![]);
     }
 

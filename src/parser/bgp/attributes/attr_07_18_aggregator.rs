@@ -1,7 +1,6 @@
 use crate::models::*;
 use crate::parser::ReadUtils;
 use crate::ParserError;
-use bytes::Buf;
 use log::warn;
 
 /// Parse aggregator attribute.

@@ -8,7 +8,6 @@ use crate::parser::ReadUtils;
 use crate::ParserError;
 use num_traits::FromPrimitive;
 
-use bytes::Buf;
 use std::net::Ipv4Addr;
 
 pub fn parse_extended_community(mut input: &[u8]) -> Result<AttributeValue, ParserError> {

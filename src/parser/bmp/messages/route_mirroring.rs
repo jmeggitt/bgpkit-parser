@@ -2,7 +2,6 @@ use crate::models::*;
 use crate::parser::bgp::messages::parse_bgp_update_message;
 use crate::parser::bmp::error::ParserBmpError;
 use crate::parser::ReadUtils;
-use bytes::Buf;
 use num_traits::FromPrimitive;
 
 #[derive(Debug)]

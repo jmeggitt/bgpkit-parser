@@ -12,7 +12,6 @@ mod attr_16_25_extended_communities;
 mod attr_32_large_communities;
 mod attr_35_otc;
 
-use bytes::Buf;
 use log::{debug, warn};
 
 use crate::models::*;
@@ -66,11 +65,11 @@ impl AttributeParser {
             // thus the while loop condition is set to be at least 3 bytes to read.
 
             // has content to read
-            let flag = data.get_u8();
-            let attr_type = data.get_u8();
+            let flag = data.read_u8()?;
+            let attr_type = data.read_u8()?;
             let attr_length = match flag & AttributeFlagsBit::ExtendedLengthBit as u8 {
-                0 => data.get_u8() as usize,
-                _ => data.get_u16() as usize,
+                0 => data.read_u8()? as usize,
+                _ => data.read_u16()? as usize,
             };
 
             let mut partial = false;
@@ -172,7 +171,7 @@ impl AttributeParser {
                 AttrType::DEVELOPMENT => {
                     let mut value = vec![];
                     for _i in 0..attr_length {
-                        value.push(attr_data.get_u8());
+                        value.push(attr_data.read_u8()?);
                     }
                     Ok(AttributeValue::Development(value))
                 }

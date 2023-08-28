@@ -1,7 +1,6 @@
 use crate::error::ParserError;
 use crate::models::*;
 use crate::parser::{AttributeParser, ReadUtils};
-use bytes::Buf;
 use log::warn;
 use num_traits::FromPrimitive;
 use std::collections::HashMap;

@@ -2,7 +2,6 @@ use crate::error::ParserError;
 use crate::models::*;
 use crate::parser::bgp::messages::parse_bgp_message;
 use crate::parser::ReadUtils;
-use bytes::Buf;
 use num_traits::FromPrimitive;
 
 /// Parse MRT BGP4MP type

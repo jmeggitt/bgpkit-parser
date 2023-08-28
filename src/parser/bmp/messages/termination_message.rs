@@ -1,6 +1,5 @@
 use crate::parser::bmp::error::ParserBmpError;
 use crate::parser::ReadUtils;
-use bytes::Buf;
 use num_traits::FromPrimitive;
 
 #[derive(Debug)]

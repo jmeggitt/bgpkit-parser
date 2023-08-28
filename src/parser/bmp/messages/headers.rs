@@ -1,7 +1,6 @@
 use crate::models::*;
 use crate::parser::bmp::error::ParserBmpError;
 use crate::parser::ReadUtils;
-use bytes::Buf;
 use num_traits::FromPrimitive;
 use std::net::IpAddr;
 
@@ -134,13 +133,13 @@ pub fn parse_per_peer_header(data: &mut &[u8]) -> Result<BmpPerPeerHeader, Parse
     let peer_ip: IpAddr = if is_router_ipv6 {
         data.read_ipv6_address()?.into()
     } else {
-        data.advance(12);
+        data.advance(12)?;
         let ip = data.read_ipv4_address()?;
         ip.into()
     };
 
     let peer_asn: u32 = if is_2byte_asn {
-        data.advance(2);
+        data.advance(2)?;
         data.read_u16()? as u32
     } else {
         data.read_u32()?

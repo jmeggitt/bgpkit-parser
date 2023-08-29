@@ -1,9 +1,9 @@
 use crate::models::*;
+use ipnet::IpNet;
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
-use std::net::IpAddr;
-use std::str::FromStr;
+use std::net::{IpAddr, Ipv4Addr};
 
 /// Element type.
 ///
@@ -58,6 +58,32 @@ pub struct BgpElem {
     pub deprecated: Option<Vec<AttrRaw>>,
 }
 
+impl BgpElem {
+    #[doc(hidden)]
+    pub fn new_empty(timestamp: f64, peer_ip: IpAddr, peer_asn: Asn) -> Self {
+        BgpElem {
+            timestamp,
+            elem_type: ElemType::ANNOUNCE,
+            peer_ip,
+            peer_asn,
+            prefix: NetworkPrefix::new(IpNet::default(), 0),
+            next_hop: None,
+            as_path: None,
+            origin_asns: None,
+            origin: None,
+            local_pref: None,
+            med: None,
+            communities: None,
+            atomic: None,
+            aggr_asn: None,
+            aggr_ip: None,
+            only_to_customer: None,
+            unknown: None,
+            deprecated: None,
+        }
+    }
+}
+
 impl Eq for BgpElem {}
 
 impl PartialOrd<Self> for BgpElem {
@@ -101,9 +127,9 @@ impl Default for BgpElem {
         BgpElem {
             timestamp: 0.0,
             elem_type: ElemType::ANNOUNCE,
-            peer_ip: IpAddr::from_str("0.0.0.0").unwrap(),
+            peer_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             peer_asn: 0.into(),
-            prefix: NetworkPrefix::from_str("0.0.0.0/0").unwrap(),
+            prefix: NetworkPrefix::new(IpNet::default(), 0),
             next_hop: None,
             as_path: None,
             origin_asns: None,

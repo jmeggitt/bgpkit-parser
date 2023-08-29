@@ -135,14 +135,12 @@ pub struct ElemIterator<R> {
     cache_elems: Vec<BgpElem>,
     record_iter: RecordIterator<R>,
     elementor: Elementor,
-    count: u64,
 }
 
 impl<R> ElemIterator<R> {
     fn new(parser: BgpkitParser<R>) -> Self {
         ElemIterator {
             record_iter: RecordIterator::new(parser),
-            count: 0,
             cache_elems: vec![],
             elementor: Elementor::new(),
         }
@@ -153,42 +151,19 @@ impl<R: Read> Iterator for ElemIterator<R> {
     type Item = BgpElem;
 
     fn next(&mut self) -> Option<BgpElem> {
-        self.count += 1;
-
         loop {
-            if self.cache_elems.is_empty() {
+            while self.cache_elems.is_empty() {
                 // refill cache elems
-                loop {
-                    match self.record_iter.next() {
-                        None => {
-                            // no more records
-                            return None;
-                        }
-                        Some(r) => {
-                            let mut elems = self.elementor.record_to_elems(r);
-                            if elems.is_empty() {
-                                // somehow this record does not contain any elems, continue to parse next record
-                                continue;
-                            } else {
-                                elems.reverse();
-                                self.cache_elems = elems;
-                                break;
-                            }
-                        }
-                    }
-                }
-                // when reaching here, the `self.cache_elems` has been refilled with some more elems
+                let next_record = self.record_iter.next()?;
+                self.elementor
+                    .record_to_elems_into(next_record, &mut self.cache_elems);
             }
 
-            // popping cached elems. note that the original elems order is preseved by reversing the
-            // vector before putting it on to cache_elems.
-            let elem = self.cache_elems.pop();
-            match elem {
-                None => return None,
-                Some(e) => match e.match_filters(&self.record_iter.parser.filters) {
-                    true => return Some(e),
-                    false => continue,
-                },
+            // popping cached elems. note that the original elems order is preserved by reversing
+            // the vector before putting it on to cache_elems.
+            let element = self.cache_elems.pop()?;
+            if element.match_filters(&self.record_iter.parser.filters) {
+                return Some(element);
             }
         }
     }

@@ -10,129 +10,10 @@ use itertools::Itertools;
 use log::warn;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 
 pub struct Elementor {
     peer_table: Option<PeerIndexTable>,
-}
-
-// use macro_rules! <name of macro>{<Body>}
-macro_rules! get_attr_value {
-    ($a:tt, $b:expr) => {
-        if let Attribute::$a(x) = $b {
-            Some(x)
-        } else {
-            None
-        }
-    };
-}
-
-#[allow(clippy::type_complexity)]
-fn get_relevant_attributes(
-    attributes: Vec<Attribute>,
-) -> (
-    Option<AsPath>,
-    Option<AsPath>,
-    Option<Origin>,
-    Option<IpAddr>,
-    Option<u32>,
-    Option<u32>,
-    Option<Vec<MetaCommunity>>,
-    Option<AtomicAggregate>,
-    Option<(Asn, IpAddr)>,
-    Option<Nlri>,
-    Option<Nlri>,
-    Option<u32>,
-    Option<Vec<AttrRaw>>,
-    Option<Vec<AttrRaw>>,
-) {
-    let mut as_path = None;
-    let mut as4_path = None;
-    let mut origin = None;
-    let mut next_hop = None;
-    let mut local_pref = Some(0);
-    let mut med = Some(0);
-    let mut atomic = Some(AtomicAggregate::NAG);
-    let mut aggregator = None;
-    let mut announced = None;
-    let mut withdrawn = None;
-    let mut otc = None;
-    let mut unknown = vec![];
-    let mut deprecated = vec![];
-
-    let mut communities_vec: Vec<MetaCommunity> = vec![];
-
-    for attr in attributes {
-        match attr.value {
-            AttributeValue::Origin(v) => origin = Some(v),
-            AttributeValue::AsPath(v) => as_path = Some(v),
-            AttributeValue::As4Path(v) => as4_path = Some(v),
-            AttributeValue::NextHop(v) => next_hop = Some(v),
-            AttributeValue::MultiExitDiscriminator(v) => med = Some(v),
-            AttributeValue::LocalPreference(v) => local_pref = Some(v),
-            AttributeValue::AtomicAggregate(v) => atomic = Some(v),
-            AttributeValue::Communities(v) => communities_vec.extend(
-                v.into_iter()
-                    .map(MetaCommunity::Community)
-                    .collect::<Vec<MetaCommunity>>(),
-            ),
-            AttributeValue::ExtendedCommunities(v) => communities_vec.extend(
-                v.into_iter()
-                    .map(MetaCommunity::ExtendedCommunity)
-                    .collect::<Vec<MetaCommunity>>(),
-            ),
-            AttributeValue::LargeCommunities(v) => communities_vec.extend(
-                v.into_iter()
-                    .map(MetaCommunity::LargeCommunity)
-                    .collect::<Vec<MetaCommunity>>(),
-            ),
-            AttributeValue::Aggregator(v, v2) => aggregator = Some((v, v2)),
-            AttributeValue::MpReachNlri(nlri) => announced = Some(nlri),
-            AttributeValue::MpUnreachNlri(nlri) => withdrawn = Some(nlri),
-            AttributeValue::OnlyToCustomer(o) => otc = Some(o),
-
-            AttributeValue::Unknown(t) => {
-                unknown.push(t);
-            }
-            AttributeValue::Deprecated(t) => {
-                deprecated.push(t);
-            }
-
-            AttributeValue::OriginatorId(_)
-            | AttributeValue::Clusters(_)
-            | AttributeValue::Development(_) => {}
-        };
-    }
-
-    let communities = match !communities_vec.is_empty() {
-        true => Some(communities_vec),
-        false => None,
-    };
-
-    (
-        as_path,
-        as4_path,
-        origin,
-        next_hop,
-        local_pref,
-        med,
-        communities,
-        atomic,
-        aggregator,
-        announced,
-        withdrawn,
-        otc,
-        if unknown.is_empty() {
-            None
-        } else {
-            Some(unknown)
-        },
-        if deprecated.is_empty() {
-            None
-        } else {
-            Some(deprecated)
-        },
-    )
 }
 
 impl Elementor {
@@ -168,128 +49,20 @@ impl Elementor {
         peer_asn: &Asn,
     ) -> Vec<BgpElem> {
         let mut elems = vec![];
-
-        let (
-            as_path,
-            as4_path, // Table dump v1 does not have 4-byte AS number
-            origin,
-            next_hop,
-            local_pref,
-            med,
-            communities,
-            atomic,
-            aggregator,
-            announced,
-            withdrawn,
-            only_to_customer,
-            unknown,
-            deprecated,
-        ) = get_relevant_attributes(msg.attributes);
-
-        let path = match (as_path, as4_path) {
-            (None, None) => None,
-            (Some(v), None) => Some(v),
-            (None, Some(v)) => Some(v),
-            (Some(v1), Some(v2)) => Some(AsPath::merge_aspath_as4path(&v1, &v2).unwrap()),
-        };
-
-        let origin_asns = match &path {
-            None => None,
-            Some(p) => p.get_origin(),
-        };
-
-        elems.extend(msg.announced_prefixes.into_iter().map(|p| BgpElem {
-            timestamp,
-            elem_type: ElemType::ANNOUNCE,
-            peer_ip: *peer_ip,
-            peer_asn: *peer_asn,
-            prefix: p,
-            next_hop,
-            as_path: path.clone(),
-            origin_asns: origin_asns.clone(),
-            origin,
-            local_pref,
-            med,
-            communities: communities.clone(),
-            atomic,
-            aggr_asn: aggregator.as_ref().map(|v| v.0),
-            aggr_ip: aggregator.as_ref().map(|v| v.1),
-            only_to_customer,
-            unknown: unknown.clone(),
-            deprecated: deprecated.clone(),
-        }));
-
-        if let Some(nlri) = announced {
-            elems.extend(nlri.prefixes.into_iter().map(|p| BgpElem {
-                timestamp,
-                elem_type: ElemType::ANNOUNCE,
-                peer_ip: *peer_ip,
-                peer_asn: *peer_asn,
-                prefix: p,
-                next_hop,
-                as_path: path.clone(),
-                origin,
-                origin_asns: origin_asns.clone(),
-                local_pref,
-                med,
-                communities: communities.clone(),
-                atomic,
-                aggr_asn: aggregator.as_ref().map(|v| v.0),
-                aggr_ip: aggregator.as_ref().map(|v| v.1),
-                only_to_customer,
-                unknown: unknown.clone(),
-                deprecated: deprecated.clone(),
-            }));
-        }
-
-        elems.extend(msg.withdrawn_prefixes.into_iter().map(|p| BgpElem {
-            timestamp,
-            elem_type: ElemType::WITHDRAW,
-            peer_ip: *peer_ip,
-            peer_asn: *peer_asn,
-            prefix: p,
-            next_hop: None,
-            as_path: None,
-            origin: None,
-            origin_asns: None,
-            local_pref: None,
-            med: None,
-            communities: None,
-            atomic: None,
-            aggr_asn: None,
-            aggr_ip: None,
-            only_to_customer,
-            unknown: None,
-            deprecated: None,
-        }));
-        if let Some(nlri) = withdrawn {
-            elems.extend(nlri.prefixes.into_iter().map(|p| BgpElem {
-                timestamp,
-                elem_type: ElemType::WITHDRAW,
-                peer_ip: *peer_ip,
-                peer_asn: *peer_asn,
-                prefix: p,
-                next_hop: None,
-                as_path: None,
-                origin: None,
-                origin_asns: None,
-                local_pref: None,
-                med: None,
-                communities: None,
-                atomic: None,
-                aggr_asn: None,
-                aggr_ip: None,
-                only_to_customer,
-                unknown: None,
-                deprecated: None,
-            }));
-        };
+        elems.extend(BgpUpdateToElemsIter::new(
+            msg, timestamp, *peer_ip, *peer_asn,
+        ));
         elems
     }
 
     /// Convert a [MrtRecord] to a vector of [BgpElem]s.
     pub fn record_to_elems(&mut self, record: MrtRecord) -> Vec<BgpElem> {
-        let mut elems = vec![];
+        let mut buffer = Vec::new();
+        self.record_to_elems_into(record, &mut buffer);
+        buffer
+    }
+
+    pub fn record_to_elems_into(&mut self, record: MrtRecord, elems: &mut Vec<BgpElem>) {
         let t = record.common_header.timestamp;
         let timestamp: f64 = if let Some(micro) = &record.common_header.microsecond_timestamp {
             let m = (*micro as f64) / 1000000.0;
@@ -300,175 +73,199 @@ impl Elementor {
 
         match record.message {
             MrtMessage::TableDumpMessage(msg) => {
-                let (
-                    as_path,
-                    _as4_path, // Table dump v1 does not have 4-byte AS number
-                    origin,
-                    next_hop,
-                    local_pref,
-                    med,
-                    communities,
-                    atomic,
-                    aggregator,
-                    _announced,
-                    _withdrawn,
-                    only_to_customer,
-                    unknown,
-                    deprecated,
-                ) = get_relevant_attributes(msg.attributes);
+                let mut bgp_msg = BgpElem::new_empty(timestamp, msg.peer_address, msg.peer_asn);
+                bgp_msg.prefix = msg.prefix;
 
-                let origin_asns = match &as_path {
-                    None => None,
-                    Some(p) => p.get_origin(),
-                };
-
-                elems.push(BgpElem {
-                    timestamp,
-                    elem_type: ElemType::ANNOUNCE,
-                    peer_ip: msg.peer_address,
-                    peer_asn: msg.peer_asn,
-                    prefix: msg.prefix,
-                    next_hop,
-                    as_path,
-                    origin,
-                    origin_asns,
-                    local_pref,
-                    med,
-                    communities,
-                    atomic,
-                    aggr_asn: aggregator.map(|v| v.0),
-                    aggr_ip: aggregator.map(|v| v.1),
-                    only_to_customer,
-                    unknown,
-                    deprecated,
-                });
+                let _ = apply_attrs_to_bgp_elem(&mut bgp_msg, msg.attributes);
+                elems.push(bgp_msg);
             }
+            MrtMessage::TableDumpV2Message(msg) => match msg {
+                TableDumpV2Message::PeerIndexTable(p) => self.peer_table = Some(p),
+                TableDumpV2Message::RibAfiEntries(t) => {
+                    for entry in t.rib_entries.into_iter().rev() {
+                        let peer = self
+                            .peer_table
+                            .as_ref()
+                            .and_then(|x| x.peers_map.get(&(entry.peer_index as u32)))
+                            .expect("missing peer table/index");
 
-            MrtMessage::TableDumpV2Message(msg) => {
-                match msg {
-                    TableDumpV2Message::PeerIndexTable(p) => {
-                        self.peer_table = Some(p);
-                    }
-                    TableDumpV2Message::RibAfiEntries(t) => {
-                        let prefix = t.prefix;
-                        for e in t.rib_entries {
-                            let pid = e.peer_index;
-                            let peer = self
-                                .peer_table
-                                .as_ref()
-                                .unwrap()
-                                .peers_map
-                                .get(&(pid as u32))
-                                .unwrap();
-                            let (
-                                as_path,
-                                as4_path, // Table dump v1 does not have 4-byte AS number
-                                origin,
-                                next_hop,
-                                local_pref,
-                                med,
-                                communities,
-                                atomic,
-                                aggregator,
-                                announced,
-                                _withdrawn,
-                                only_to_customer,
-                                unknown,
-                                deprecated,
-                            ) = get_relevant_attributes(e.attributes);
+                        let mut bgp_elem =
+                            BgpElem::new_empty(timestamp, peer.peer_address, peer.peer_asn);
+                        bgp_elem.prefix = t.prefix;
 
-                            let path = match (as_path, as4_path) {
-                                (None, None) => None,
-                                (Some(v), None) => Some(v),
-                                (None, Some(v)) => Some(v),
-                                (Some(v1), Some(v2)) => {
-                                    Some(AsPath::merge_aspath_as4path(&v1, &v2).unwrap())
-                                }
-                            };
+                        let (announced, withdrawn) =
+                            apply_attrs_to_bgp_elem(&mut bgp_elem, entry.attributes);
+                        assert!(withdrawn.is_none());
 
-                            let next = match next_hop {
-                                None => {
-                                    if let Some(v) = announced {
-                                        if let Some(h) = v.next_hop {
-                                            match h {
-                                                NextHopAddress::Ipv4(v) => Some(IpAddr::from(v)),
-                                                NextHopAddress::Ipv6(v) => Some(IpAddr::from(v)),
-                                                NextHopAddress::Ipv6LinkLocal(v, _) => {
-                                                    Some(IpAddr::from(v))
-                                                }
-                                            }
-                                        } else {
-                                            None
-                                        }
-                                    } else {
-                                        None
-                                    }
-                                }
-                                Some(v) => Some(v),
-                            };
-
-                            let origin_asns = match &path {
-                                None => None,
-                                Some(p) => p.get_origin(),
-                            };
-
-                            elems.push(BgpElem {
-                                timestamp,
-                                elem_type: ElemType::ANNOUNCE,
-                                peer_ip: peer.peer_address,
-                                peer_asn: peer.peer_asn,
-                                prefix,
-                                next_hop: next,
-                                as_path: path,
-                                origin,
-                                origin_asns,
-                                local_pref,
-                                med,
-                                communities,
-                                atomic,
-                                aggr_asn: aggregator.map(|v| v.0),
-                                aggr_ip: aggregator.map(|v| v.1),
-                                only_to_customer,
-                                unknown,
-                                deprecated,
-                            });
+                        if bgp_elem.next_hop.is_none() {
+                            bgp_elem.next_hop =
+                                announced.and_then(|x| x.next_hop).map(|x| match x {
+                                    NextHopAddress::Ipv4(x) => IpAddr::V4(x),
+                                    NextHopAddress::Ipv6(x) => IpAddr::V6(x),
+                                    NextHopAddress::Ipv6LinkLocal(x, _) => IpAddr::V6(x),
+                                });
                         }
-                    }
-                    TableDumpV2Message::RibGenericEntries(_t) => {
-                        warn!(
-                            "to_elem for TableDumpV2Message::RibGenericEntries not yet implemented"
-                        );
+
+                        elems.push(bgp_elem);
                     }
                 }
-            }
+                TableDumpV2Message::RibGenericEntries(_) => {
+                    warn!("to_elem for TableDumpV2Message::RibGenericEntries not yet implemented");
+                }
+            },
             MrtMessage::Bgp4Mp(msg) => match msg {
-                Bgp4Mp::Bgp4MpStateChange(_v) | Bgp4Mp::Bgp4MpStateChangeAs4(_v) => {}
-
+                Bgp4Mp::Bgp4MpStateChange(_) | Bgp4Mp::Bgp4MpStateChangeAs4(_) => {}
                 Bgp4Mp::Bgp4MpMessage(v)
                 | Bgp4Mp::Bgp4MpMessageLocal(v)
                 | Bgp4Mp::Bgp4MpMessageAs4(v)
                 | Bgp4Mp::Bgp4MpMessageAs4Local(v) => {
-                    elems.extend(Elementor::bgp_to_elems(
-                        v.bgp_message,
-                        timestamp,
-                        &v.peer_ip,
-                        &v.peer_asn,
-                    ));
+                    if let BgpMessage::Update(update) = v.bgp_message {
+                        elems.extend(BgpUpdateToElemsIter::new(
+                            update, timestamp, v.peer_ip, v.peer_asn,
+                        ));
+                    }
                 }
             },
         }
-        elems
     }
 }
 
-#[inline(always)]
-pub fn option_to_string<T>(o: &Option<T>) -> String
-where
-    T: Display,
-{
-    if let Some(v) = o {
-        v.to_string()
-    } else {
-        String::new()
+fn apply_attrs_to_bgp_elem(
+    base_elem: &mut BgpElem,
+    attributes: Vec<Attribute>,
+) -> (Option<Nlri>, Option<Nlri>) {
+    let mut as_path = None;
+    let mut as4_path = None;
+    let mut announced = None;
+    let mut withdrawn = None;
+    for attribute in attributes {
+        match attribute.value {
+            AttributeValue::Origin(x) => base_elem.origin = Some(x),
+            AttributeValue::AsPath(x) => as_path = Some(x),
+            AttributeValue::As4Path(x) => as4_path = Some(x),
+            AttributeValue::NextHop(x) => base_elem.next_hop = Some(x),
+            AttributeValue::MultiExitDiscriminator(x) => base_elem.med = Some(x),
+            AttributeValue::LocalPreference(x) => base_elem.local_pref = Some(x),
+            AttributeValue::AtomicAggregate(x) => base_elem.atomic = Some(x),
+            AttributeValue::OnlyToCustomer(x) => base_elem.only_to_customer = Some(x),
+            AttributeValue::Aggregator(x, y) => {
+                base_elem.aggr_asn = Some(x);
+                base_elem.aggr_ip = Some(y);
+            }
+            AttributeValue::Communities(x) => base_elem
+                .communities
+                .get_or_insert_with(Vec::new)
+                .extend(x.into_iter().map(MetaCommunity::Community)),
+            AttributeValue::ExtendedCommunities(x) => base_elem
+                .communities
+                .get_or_insert_with(Vec::new)
+                .extend(x.into_iter().map(MetaCommunity::ExtendedCommunity)),
+            AttributeValue::LargeCommunities(x) => base_elem
+                .communities
+                .get_or_insert_with(Vec::new)
+                .extend(x.into_iter().map(MetaCommunity::LargeCommunity)),
+            AttributeValue::OriginatorId(_)
+            | AttributeValue::Clusters(_)
+            | AttributeValue::Development(_) => {}
+            AttributeValue::MpReachNlri(x) => announced = Some(x),
+            AttributeValue::MpUnreachNlri(x) => withdrawn = Some(x),
+            AttributeValue::Deprecated(x) => {
+                base_elem.deprecated.get_or_insert_with(Vec::new).push(x)
+            }
+            AttributeValue::Unknown(x) => base_elem.unknown.get_or_insert_with(Vec::new).push(x),
+        }
+    }
+
+    base_elem.as_path = match (as_path, as4_path) {
+        (None, None) => None,
+        (Some(v), None) => Some(v),
+        (None, Some(v)) => Some(v),
+        (Some(v1), Some(v2)) => AsPath::merge_aspath_as4path(&v1, &v2),
+    };
+
+    base_elem.origin_asns = base_elem.as_path.as_ref().and_then(|x| x.get_origin());
+
+    (announced, withdrawn)
+}
+
+pub struct BgpUpdateToElemsIter {
+    base_elem: BgpElem,
+    withdrawn: Vec<NetworkPrefix>,
+    announced: Vec<NetworkPrefix>,
+}
+
+impl BgpUpdateToElemsIter {
+    pub fn new(update: BgpUpdateMessage, timestamp: f64, peer_ip: IpAddr, peer_asn: Asn) -> Self {
+        let BgpUpdateMessage {
+            mut withdrawn_prefixes,
+            attributes,
+            mut announced_prefixes,
+        } = update;
+        let mut base_elem = BgpElem::new_empty(timestamp, peer_ip, peer_asn);
+        let (announced, withdrawn) = apply_attrs_to_bgp_elem(&mut base_elem, attributes);
+
+        announced.map(|x| {
+            if announced_prefixes.is_empty() {
+                announced_prefixes = x.prefixes;
+            } else {
+                announced_prefixes.extend(x.prefixes);
+            }
+        });
+
+        withdrawn.map(|x| {
+            if withdrawn_prefixes.is_empty() {
+                withdrawn_prefixes = x.prefixes;
+            } else {
+                withdrawn_prefixes.extend(x.prefixes);
+            }
+        });
+
+        BgpUpdateToElemsIter {
+            base_elem,
+            withdrawn: withdrawn_prefixes,
+            announced: announced_prefixes,
+        }
+    }
+}
+
+impl Iterator for BgpUpdateToElemsIter {
+    type Item = BgpElem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(prefix) = self.withdrawn.pop() {
+            return Some(BgpElem {
+                timestamp: self.base_elem.timestamp,
+                elem_type: ElemType::WITHDRAW,
+                peer_ip: self.base_elem.peer_ip,
+                peer_asn: self.base_elem.peer_asn,
+                prefix,
+                next_hop: None,
+                as_path: None,
+                origin: None,
+                origin_asns: None,
+                local_pref: None,
+                med: None,
+                communities: None,
+                atomic: None,
+                aggr_asn: None,
+                aggr_ip: None,
+                only_to_customer: self.base_elem.only_to_customer,
+                unknown: None,
+                deprecated: None,
+            });
+        }
+
+        let prefix = self.announced.pop()?;
+        if self.announced.is_empty() {
+            // Since this is the last one, just take the existing instance to avoid allocation and
+            // copying
+            let mut next = std::mem::take(&mut self.base_elem);
+            next.prefix = prefix;
+            return Some(next);
+        }
+
+        let mut next = self.base_elem.clone();
+        next.prefix = prefix;
+        Some(next)
     }
 }

@@ -101,6 +101,7 @@ md5 = "0.7.0"
 which = "4.4.0"
 serde_json = "1.0"
 hex = "0.4.3"
+core_affinity = "0.8.1"
 
 # This list only includes examples which require additional features to run. These are more in the examples directory.
 [[example]]

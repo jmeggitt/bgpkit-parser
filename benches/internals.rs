@@ -38,6 +38,10 @@ fn preload_min_for_n_entries<R: Read>(input_reader: R, n: usize) -> Vec<u8> {
 const RECORD_LIMIT: usize = 100_000;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
+    if let Some(x) = core_affinity::get_core_ids().and_then(|mut x| x.pop()) {
+        core_affinity::set_for_current(x);
+    }
+
     let update_data = data_source::test_data_file("update-example.gz");
     let rib_data = data_source::test_data_file("rib-example-small.bz2");
 

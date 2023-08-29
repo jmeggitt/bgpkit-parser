@@ -20,7 +20,8 @@ impl FromStr for NetworkPrefix {
 }
 
 impl NetworkPrefix {
-    pub fn new(prefix: IpNet, path_id: u32) -> NetworkPrefix {
+    #[inline]
+    pub const fn new(prefix: IpNet, path_id: u32) -> NetworkPrefix {
         NetworkPrefix { prefix, path_id }
     }
 }

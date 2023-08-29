@@ -240,49 +240,34 @@ pub trait ReadUtils: Read {
 
         // Convert to bytes
         let byte_len: usize = (bit_len as usize + 7) / 8;
-        let addr: IpAddr = match afi {
+        match afi {
             Afi::Ipv4 => {
-                // 4 bytes -- u32
-                if byte_len > 4 {
-                    return Err(ParserError::ParseError(format!(
+                if bit_len <= 32 {
+                    let mut buffer = [0; 4];
+                    self.read_exact(&mut buffer[..byte_len])?;
+                    let prefix = Ipv4Net::new(Ipv4Addr::from(buffer), bit_len).unwrap();
+                    Ok(NetworkPrefix::new(IpNet::V4(prefix), path_id))
+                } else {
+                    Err(ParserError::ParseError(format!(
                         "Invalid byte length for IPv4 prefix. byte_len: {}, bit_len: {}",
                         byte_len, bit_len
-                    )));
+                    )))
                 }
-                let mut buff = [0; 4];
-                self.has_n_remaining(byte_len)?;
-                for i in 0..byte_len {
-                    buff[i] = self.read_u8()?;
-                }
-                IpAddr::V4(Ipv4Addr::from(buff))
             }
             Afi::Ipv6 => {
-                // 16 bytes
-                if byte_len > 16 {
-                    return Err(ParserError::ParseError(format!(
-                        "Invalid byte length for IPv6 prefix. byte_len: {}, bit_len: {}",
+                if bit_len <= 128 {
+                    let mut buffer = [0; 16];
+                    self.read_exact(&mut buffer[..byte_len])?;
+                    let prefix = Ipv6Net::new(Ipv6Addr::from(buffer), bit_len).unwrap();
+                    Ok(NetworkPrefix::new(IpNet::V6(prefix), path_id))
+                } else {
+                    Err(ParserError::ParseError(format!(
+                        "Invalid byte length for IPv4 prefix. byte_len: {}, bit_len: {}",
                         byte_len, bit_len
-                    )));
+                    )))
                 }
-                self.has_n_remaining(byte_len)?;
-                let mut buff = [0; 16];
-                for i in 0..byte_len {
-                    buff[i] = self.read_u8()?;
-                }
-                IpAddr::V6(Ipv6Addr::from(buff))
             }
-        };
-        let prefix = match IpNet::new(addr, bit_len) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err(ParserError::ParseError(format!(
-                    "Invalid network prefix length: {}",
-                    bit_len
-                )))
-            }
-        };
-
-        Ok(NetworkPrefix::new(prefix, path_id))
+        }
     }
 
     fn read_n_bytes(&mut self, n_bytes: usize) -> Result<Vec<u8>, ParserError> {
